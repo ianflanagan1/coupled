@@ -3,7 +3,8 @@
     version = 1                        # the version of the file's format: see schema/
     exclude = ["README.md", "tests"]   # path prefixes whose markers aren't checked; none by default
     registry = ".config/coupled.toml"  # the registry; .coupled-tags.toml by default
-    tag-message = true                 # write a message after each marker's label; off by default
+    tag-pointer = true                 # say where each label's group is: off by default
+    tag-relations = true               # give each label's relations: off by default
 
 A repository needn't have the file. The paths it excludes are skipped on every run, so the check
 and --update can't disagree about them, nor about which file is the registry.
@@ -18,7 +19,20 @@ PURPOSE = "coupled-tags"
 # The registry's path from the repository's root, unless the settings name another.
 REGISTRY_FILE = ".coupled-tags.toml"
 
-_KNOWN = ("exclude", "registry", "tag-message")
+_KNOWN = ("exclude", "registry", "tag-pointer", "tag-relations")
+
+
+@final
+@dataclass(frozen=True)
+class TagMessage:
+    """What follows each marker's label, each part turned on on its own: the site's own
+    relations, as seen from it, then a pointer saying what to search for and which file
+    describes the group."""
+
+    # For a reader who doesn't know the convention, which a reader who does can do without.
+    pointer: bool
+    # For any reader, so the constraint shows where the value is edited.
+    relations: bool
 
 
 class Version(IntEnum):
@@ -54,13 +68,13 @@ class Settings:
     excludes: list[str]
     # The registry's path from the repository's root.
     registry: str
-    # Whether each marker's label is followed by a message saying where its group is described.
-    messages: bool
+    # What follows each marker's label.
+    message: TagMessage
 
 
 def defaults() -> Settings:
     """The settings of a repository with no settings file."""
-    return Settings([], REGISTRY_FILE, False)
+    return Settings([], REGISTRY_FILE, TagMessage(pointer=False, relations=False))
 
 
 def settings(read: Read | Invalid | None) -> Settings | Invalid:
@@ -94,10 +108,13 @@ def _v1(table: dict[str, object], where: str) -> Settings | Invalid:
     registry = table.get("registry", REGISTRY_FILE)
     if not isinstance(registry, str) or not _inside(registry):
         return Invalid(f"registry in {where} must be the path of a file inside the repository.", ())
-    messages = table.get("tag-message", False)
-    if not isinstance(messages, bool):
-        return Invalid(f"tag-message in {where} must be true or false.", ())
-    return Settings(excludes, registry, messages)
+    pointer = table.get("tag-pointer", False)
+    if not isinstance(pointer, bool):
+        return Invalid(f"tag-pointer in {where} must be true or false.", ())
+    relations = table.get("tag-relations", False)
+    if not isinstance(relations, bool):
+        return Invalid(f"tag-relations in {where} must be true or false.", ())
+    return Settings(excludes, registry, TagMessage(pointer=pointer, relations=relations))
 
 
 def _inside(path: str) -> bool:

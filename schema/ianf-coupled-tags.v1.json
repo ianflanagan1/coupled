@@ -28,8 +28,13 @@
       "minLength": 1,
       "default": ".coupled-tags.toml"
     },
-    "tag-message": {
-      "description": "Whether each marker's label is followed by a message saying what to search for to find its group's sites, and which file describes the group. --fix writes or drops it.",
+    "tag-relations": {
+      "description": "Whether each marker's label is followed by its site's relations, as seen from it, so any reader sees what must hold where the value is edited. --fix writes or drops them.",
+      "type": "boolean",
+      "default": false
+    },
+    "tag-pointer": {
+      "description": "Whether each marker's label is followed by a message saying what to search for to find the group's sites and which file describes the group, for a reader who doesn't know the convention. It comes after the relations, if they're on. --fix writes or drops it.",
       "type": "boolean",
       "default": false
     }

@@ -1,10 +1,12 @@
 """The coupled-tags-lint command line."""
 
 import os
+import re
 
 from cli_kit import cli, outcome
 from cli_kit.outcome import Done, NothingToDo, Precondition
 
+from coupled_tags_lint.core.markers import NAME_PATTERN
 from coupled_tags_lint.core.settings import REGISTRY_FILE, Invalid
 from coupled_tags_lint.orchestrators.lint import Lint, Report
 
@@ -25,13 +27,14 @@ It also compares the groups with the registry's reviewed section, which records
 each group's table, the unit on each value, and a fingerprint of each block a
 structural op relates. A table changed, a site added or removed, a unit changed
 or a block edited is reported until the group is reviewed and recorded with
---update.
+--update <key>, which names each group it records.
 
 <dir>/.config/ianf-coupled-tags.toml, if it's there, sets beside version = 1 the
 path prefixes to exclude on every run, as exclude = ["docs", "tests"], the
-registry, as registry = ".config/coupled.toml", and with tag-message = true, a
-message after each marker's label saying where its group is described, which
---fix writes.
+registry, as registry = ".config/coupled.toml", and what follows each marker's
+label: tag-relations = true for the site's own relations, and tag-pointer = true
+for what to search for and which file describes its group. Both are off by
+default. --fix writes the message.
 
 Exit status: 0 clean, 1 problems found, 2 usage error."""
 
@@ -53,8 +56,11 @@ def run(lint: Lint, argv: list[str]) -> int:
     )
     parser.add_argument(
         "--update",
-        action="store_true",
-        help="record the groups as they are now in the registry's reviewed section, then check",
+        action="append",
+        default=[],
+        metavar="<key>",
+        help="record the group of <key> as it is now in the registry's reviewed section, "
+        "once you've reviewed it, then check; repeatable",
     )
     parser.add_argument(
         "dir", nargs="?", default=".", metavar="<dir>", help="directory to scan (default: .)"
@@ -63,6 +69,9 @@ def run(lint: Lint, argv: list[str]) -> int:
 
     if not os.path.isdir(args.dir):
         parser.error(f"{args.dir} isn't a directory")
+    for key in args.update:
+        if re.fullmatch(NAME_PATTERN, key) is None:
+            parser.error(f"--update takes a group's key, such as upload-limit, not {key}")
     excludes = [path.rstrip("/") for path in args.x]
     return cli.finish(
         _PROG, lambda: _show(lint.run(args.dir, excludes, args.update, args.fix), args.l)

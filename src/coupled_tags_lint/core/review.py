@@ -25,17 +25,21 @@ from coupled_tags_lint.core.markers import marker_text
 from coupled_tags_lint.core.registry import Registry, Reviewed, ReviewedSite, table_name
 from coupled_tags_lint.core.values import Value, json_at, read_value, unit_of
 
-# How to update the reviewed section, as compare's messages end.
-UPDATE = "rerun with --update"
+
+def update(key: str) -> str:
+    """How to record key's group as reviewed, as compare's messages end."""
+    return f"rerun with --update {key}"
 
 
 @final
 @dataclass(frozen=True)
 class CurrentSite:
-    """A site as it is now, at where (`path:line`, or a file's ref)."""
+    """A site as it is now, at where (`path:line`, or a file's ref), with its value in a group
+    of value ops, if it could be read, which the reviewed section doesn't record."""
 
     where: str
     site: ReviewedSite
+    value: str | None
 
 
 @final
@@ -57,15 +61,16 @@ def current(
         for site, label in labelled(sites, key):
             unit = None
             block = None
+            value = None
             if not value_group:
                 block = fingerprint(site.block)
             elif site.code is not None:
                 reading = read_value(site.code, group.selector(label))
                 if isinstance(reading, Value):
+                    value = reading.text
                     unit = unit_of(reading.text)
-            records.append(
-                CurrentSite(site.where, ReviewedSite(marker_text(key, label), unit, block))
-            )
+            name = marker_text(key, label)
+            records.append(CurrentSite(site.where, ReviewedSite(name, unit, block), value))
         if not value_group:
             for ref in group.file_refs():
                 if ref.repo is not None:
@@ -76,7 +81,9 @@ def current(
                         reached = text if ref.pointer is None else json_at(text, ref.pointer)
                         block = fingerprint((reached or text).splitlines())
                         name = ref.unmarked().text()
-                        records.append(CurrentSite(ref.text(), ReviewedSite(name, None, block)))
+                        records.append(
+                            CurrentSite(ref.text(), ReviewedSite(name, None, block), None)
+                        )
                     case Missing() | None:
                         pass  # Reported by check, unless it's optional.
                     case _:
@@ -91,12 +98,17 @@ def fingerprint(lines: list[str] | tuple[str, ...]) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-def reviewed(now: dict[str, CurrentGroup]) -> dict[str, Reviewed]:
-    """The reviewed section recording the groups as they are now."""
-    return {
-        key: Reviewed(group.definition, tuple(site.site for site in group.sites))
-        for key, group in now.items()
-    }
+def reviewed(
+    old: dict[str, Reviewed], now: dict[str, CurrentGroup], keys: list[str]
+) -> dict[str, Reviewed]:
+    """The reviewed section old, with the groups of keys recorded as they are now, or dropped
+    if they're gone."""
+    result = {key: group for key, group in old.items() if key not in keys}
+    for key in keys:
+        if key in now:
+            group = now[key]
+            result[key] = Reviewed(group.definition, tuple(site.site for site in group.sites))
+    return result
 
 
 def compare(
@@ -112,7 +124,7 @@ def compare(
                 Problem(
                     registry_file,
                     f"The reviewed section records COUPLED:{key}:, which has no table now. If "
-                    f"removing it was intended, {UPDATE}",
+                    f"removing it was intended, {update(key)}",
                 )
             )
             continue
@@ -121,8 +133,8 @@ def compare(
             problems.append(
                 Problem(
                     table,
-                    f"COUPLED:{key}: hasn't been reviewed. Check that its group holds, then "
-                    f"{UPDATE} to record it",
+                    f"COUPLED:{key}: hasn't been reviewed. Check that its group holds"
+                    f"{_now(group)}, then {update(key)} to record it",
                 )
             )
             continue
@@ -131,7 +143,8 @@ def compare(
                 Problem(
                     table,
                     f"The table of COUPLED:{key}: has changed since it was last reviewed. If "
-                    f"every site and file holds as it's now written, {UPDATE}",
+                    f"every site and file holds as it's now written{_now(group)}, "
+                    f"{update(key)}",
                 )
             )
         problems += _compare_sites(key, old[key].sites, group.sites)
@@ -151,7 +164,7 @@ def _compare_sites(
                 Problem(
                     site.name,
                     f"This site of COUPLED:{key}: was reviewed, but it's gone. If removing it "
-                    f"was intended, {UPDATE}",
+                    f"was intended, {update(key)}",
                 )
             )
     for site in now:
@@ -161,7 +174,7 @@ def _compare_sites(
                 Problem(
                     site.where,
                     f"This site of COUPLED:{key}: hasn't been reviewed. Check that its group "
-                    f"holds, then {UPDATE}",
+                    f"holds, then {update(key)}",
                 )
             )
             continue
@@ -172,7 +185,7 @@ def _compare_sites(
                     f"Its unit has changed from {_unit(old.unit)} to {_unit(site.site.unit)} "
                     "since it was last reviewed. The lint compares numbers without their units, "
                     f"so convert this value, or the formulas of COUPLED:{key}:, to the old unit; "
-                    f"or if the group holds in the new one, {UPDATE}",
+                    f"or if the group holds in the new one, {update(key)}",
                 )
             )
         if site.site.block != old.block:
@@ -182,10 +195,20 @@ def _compare_sites(
                     site.where,
                     f"It has changed since it was last reviewed. Read every site of "
                     f"COUPLED:{key}: ({', '.join(others) or 'none other here'}, and its table "
-                    f"in the registry), change them together so the group holds, then {UPDATE}",
+                    "in the registry), change them together so the group holds, then "
+                    f"{update(key)}",
                 )
             )
     return problems
+
+
+def _now(group: CurrentGroup) -> str:
+    """The group's sites as they are now, with their values where they were read: `, as it
+    is now: nginx.conf:1 `10m`, app.py:1 `8``."""
+    sites = [
+        site.where + ("" if site.value is None else f" `{site.value}`") for site in group.sites
+    ]
+    return f" (its sites now: {', '.join(sites)})" if sites else ""
 
 
 def _unit(unit: str | None) -> str:

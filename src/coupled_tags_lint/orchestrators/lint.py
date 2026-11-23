@@ -1,7 +1,7 @@
 """Linting a repository's COUPLED groups: read its settings; gather the markers in its files, its
 registry and the files in it that the registry's groups refer to; with --fix, write or drop the
 message after each marker's label, as the settings say, and gather again; with --update, record
-the groups in the registry's reviewed section; then check them. Files in other repositories
+the groups it names in the registry's reviewed section; then check them. Files in other repositories
 aren't read."""
 
 from dataclasses import dataclass
@@ -18,11 +18,12 @@ from coupled_tags_lint.core.check import (
     check,
     file_paths,
     file_sites,
+    markers,
     unchecked,
 )
 from coupled_tags_lint.core.markers import Marker
 from coupled_tags_lint.core.registry import Registry, Unparseable
-from coupled_tags_lint.core.rewrite import with_messages
+from coupled_tags_lint.core.rewrite import wanted, with_messages
 from coupled_tags_lint.core.settings import Invalid, Read, Settings, settings
 
 
@@ -82,9 +83,10 @@ class Lint:
         self._files = files
         self._settings = settings
 
-    def run(self, root: str, excludes: list[str], update: bool, fix: bool) -> Report | Invalid:
+    def run(self, root: str, excludes: list[str], update: list[str], fix: bool) -> Report | Invalid:
         """Lints the repository at root, leaving out the paths its settings exclude and the
-        excludes given. Invalid, with nothing changed, when its settings can't be used."""
+        excludes given, after recording the groups of the keys in update as reviewed. Invalid,
+        with nothing changed, when its settings can't be used."""
         found = settings(self._settings.read(root))
         if isinstance(found, Invalid):
             return found
@@ -100,13 +102,18 @@ class Lint:
 
         updated = False
         problems = gathered.unreadable + check(
-            sites, registry, gathered.files, found.registry, found.messages
+            sites, registry, gathered.files, found.registry, found.message
         )
         if isinstance(registry, Registry):
             now = review.current(sites, registry, gathered.files)
             old = registry.reviewed
-            if update and gathered.registry_text is not None:
-                new = review.reviewed(now)
+            unknown = [key for key in update if key not in registry.groups]
+            problems += [
+                Problem(found.registry, f"--update {key}: there's no group COUPLED:{key}:")
+                for key in unknown
+            ]
+            if update and not unknown and gathered.registry_text is not None:
+                new = review.reviewed(old, now, update)
                 text = registries.with_reviewed(gathered.registry_text, new)
                 if text != gathered.registry_text:
                     self._files.write(root + "/" + found.registry, text)
@@ -152,12 +159,13 @@ class Lint:
             path = site.where.rsplit(":", 1)[0]
             if isinstance(site.found, Marker) and path not in paths:
                 paths.append(path)
+        messages = wanted(markers(gathered.sites), gathered.registry, found.message, found.registry)
         changed: list[str] = []
         for path in paths:
             text = self._files.read(root + "/" + path)
             if text is None:
                 continue
-            lines = with_messages(text.splitlines(), found.registry, found.messages)
+            lines = with_messages(text.splitlines(), messages)
             new_text = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
             if new_text != text:
                 self._files.write(root + "/" + path, new_text)

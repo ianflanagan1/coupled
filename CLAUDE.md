@@ -1,6 +1,6 @@
 # coupled-tags-lint
 
-`devbox run -- task check` runs ruff and the tests, then builds the flake and lints this repository's markers with the command it packages; run it before finishing. After changing a COUPLED group here, record it with `devbox run -- uv run coupled-tags-lint --update`; `.config/ianf-coupled-tags.toml` excludes the README and the tests. `devbox run -- task lint-file -- <files>` formats and fixes the Python files given.
+`devbox run -- task check` runs ruff and the tests, then builds the flake and lints this repository's markers with the command it packages; run it before finishing. After changing a COUPLED group here, record it with `devbox run -- uv run coupled-tags-lint --update <key>`; `.config/ianf-coupled-tags.toml` excludes the README and the tests. `devbox run -- task lint-file -- <files>` formats and fixes the Python files given.
 
 The lint is a functional core (`core/`) with orchestrators (`orchestrators/lint.py`, and `orchestrators/hook.py` for the Claude Code hooks) and adapters; test the core with plain values, and the commands through `tests/test_cli.py` and `tests/test_hook.py`, which run them as programs. The marker and registry format is defined in coupled-tags (`~/projects/claude/coupled-tags`): its SKILL.md and README, and this repository's `core/markers.py`, `core/relations.py`, `core/registry.py` and README, change together. Write examples of markers in `src/` with placeholders (`COUPLED:<key>: <label>`), or quoted as search text (`"COUPLED:upload-limit:"`), since a concrete one is a marker the lint checks.
 

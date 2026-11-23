@@ -32,7 +32,7 @@ def differences(
 ) -> list[str]:
     """The problems after a change from before to after, recorded as reviewed before it."""
     others: dict[str, FileRead] = {}
-    old = reviewed(current(sites(before), registry(text), others))
+    old = reviewed({}, current(sites(before), registry(text), others), ["upload-limit", "vat"])
     now = current(sites(after), registry(after_text), others)
     return [f"{p.where} {p.message}" for p in compare(old, now, REGISTRY)]
 
@@ -97,7 +97,8 @@ def test_reindenting_a_structural_block_is_not_a_difference() -> None:
 def test_an_edited_file_a_structural_group_names_is_reported() -> None:
     text = STRUCTURE.replace('"invoice same-as cart"', '"invoice same-shape ./schema.json"')
     group = {"a.py": VAT["a.py"]}
-    old = reviewed(current(sites(group), registry(text), {"schema.json": Content("{}")}))
+    first = current(sites(group), registry(text), {"schema.json": Content("{}")})
+    old = reviewed({}, first, ["vat"])
     now = current(sites(group), registry(text), {"schema.json": Content('{"a": 1}')})
     [problem] = compare(old, now, REGISTRY)
     assert problem.where == "./schema.json"
@@ -111,6 +112,21 @@ def test_a_group_never_reviewed_is_reported_at_its_table() -> None:
 
 
 def test_a_reviewed_group_whose_table_is_gone_is_reported() -> None:
-    old = reviewed(current(sites(UPLOAD), registry(VALUES), {}))
+    old = reviewed({}, current(sites(UPLOAD), registry(VALUES), {}), ["upload-limit"])
     [problem] = compare(old, {}, REGISTRY)
     assert "which has no table now" in problem.message
+
+
+def test_recording_one_group_keeps_what_the_others_recorded() -> None:
+    both = registry(VALUES + STRUCTURE.replace("version = 1\n", ""))
+    now = current(sites({**UPLOAD, **VAT}), both, {})
+    first = reviewed({}, now, ["vat"])
+    assert list(first) == ["vat"]
+    assert sorted(reviewed(first, now, ["upload-limit"])) == ["upload-limit", "vat"]
+
+
+def test_a_message_about_a_value_group_gives_each_site_s_value_now() -> None:
+    now = current(sites(UPLOAD), registry(VALUES), {})
+    [problem] = compare({}, now, REGISTRY)
+    assert "nginx.conf:1 `10m`" in problem.message and "app.py:1 `8`" in problem.message
+    assert problem.message.endswith("rerun with --update upload-limit to record it")

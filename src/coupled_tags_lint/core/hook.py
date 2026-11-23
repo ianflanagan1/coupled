@@ -119,7 +119,7 @@ class Group:
 _ACT = (
     "change them together so every relation still holds, then run coupled-tags-lint. Change a "
     "group's table only if what must hold has changed, and once every site is reviewed, record "
-    "it with `coupled-tags-lint --update`."
+    "it with `coupled-tags-lint --update <key>`."
 )
 
 

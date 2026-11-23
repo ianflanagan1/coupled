@@ -47,8 +47,8 @@ A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no mar
 - **the registry:** none when there are markers, one that isn't TOML or has no `version = 1`, a table not named `["COUPLED:<key>:"]`, a field it doesn't know, and a relation, file or selector it can't read
 - **groups:** a key with no table, a label no marker has or two markers share, a group with fewer than two sites and files, one mixing value and structural ops, a bare op beside other relations, two relations between the same sites, a site relating to itself, a formula or selector in a group of structural ops, a formula multiplying or dividing by 0, and a site or file nothing relates
 - **files:** a file in this repository that isn't there, unless it's marked optional, and one that holds a marker of the group, which should be named by its label
-- **values**, in groups using value ops: a site or file whose value it can't read, and a relation that doesn't hold, with the values it compared
-- **the reviewed section:** a group that differs from what it records (see [The reviewed section](#the-reviewed-section))
+- **values**, in groups using value ops: a site or file whose value it can't read, and a relation that doesn't hold, with the values it compared, and a reminder to change the values rather than the relation unless what must hold has changed
+- **the reviewed section:** a group that differs from what it records, with each site's current value in a group using value ops (see [The reviewed section](#the-reviewed-section)), and a key given to `--update` that has no group
 - **the message:** a marker without the message after its label when the [settings](#settings) turn it on, or with one when they don't
 - **unreadable files:** a file holding `COUPLED:` that isn't UTF-8
 
@@ -58,14 +58,14 @@ The lint doesn't read other repositories, since which revision to compare agains
 
 ## The reviewed section
 
-Relations between values are checked on every run, but structural ops can't be, and a group can lose a site without any relation failing. So `--update` writes, below the groups in the registry, each group as it was last reviewed:
+Relations between values are checked on every run, but structural ops can't be, and a group can lose a site without any relation failing. So `--update <key>` writes, below the groups in the registry, each group it names as it was last reviewed:
 
 - a fingerprint of its table
 - each of its sites, by its marker (`"COUPLED:upload-limit: nginx"`)
 - in a group using value ops, the unit on each value, since numbers are compared without their units
 - in a group using structural ops, a fingerprint of each site's block, and of each file in this repository the group names
 
-The lint fails when the code differs: a table changed, a site added or removed, a unit changed, or a structural block or named file edited. It names the group's other sites. Read them, change them together so the group holds, then rerun with `--update` to record it; commit the registry with the change, so its diff shows the group was touched. Values themselves aren't recorded: changing one is checked by its relations. Neither is where a site is, so moving a marked line to another file isn't a change.
+The lint fails when the code differs: a table changed, a site added or removed, a unit changed, or a structural block or named file edited. It names the group's other sites. Read them, change them together so the group holds, then rerun with `--update <key>` to record it, naming each group you've reviewed, so recording is never a blanket step; commit the registry with the change, so its diff shows the group was touched. Values themselves aren't recorded: changing one is checked by its relations. Neither is where a site is, so moving a marked line to another file isn't a change.
 
 A block's fingerprint ignores indentation, blank lines, and the markers and ENDs of blocks nested inside it, so reindenting a block or rewording a marker inside it isn't a change. Sites under an excluded path aren't recorded.
 
@@ -78,7 +78,7 @@ coupled-tags-lint            # check the current directory
 coupled-tags-lint -l         # also list every key and its sites
 coupled-tags-lint -x docs/   # exclude a path prefix, besides the settings file's (repeatable)
 coupled-tags-lint --fix      # write or drop the message after each label, as the settings say, then check
-coupled-tags-lint --update   # record the groups in the registry's reviewed section, then check
+coupled-tags-lint --update upload-limit   # record a group you've reviewed, then check (repeatable)
 ```
 
 In a git work tree it scans tracked files plus untracked files that aren't ignored. Elsewhere it uses `grep --recursive`, skipping `.git`, `node_modules` and `vendor`. It ends with one status line: `➖` and exit status 0 when clean, `⚠️` and the problems, one per line, with exit status 1 when it finds any. A usage error exits with 2.
@@ -92,16 +92,19 @@ A repository sets the paths to exclude on every run, where its registry is, and 
 version = 1
 exclude = ["docs", "tests/fixtures"]
 registry = ".config/coupled.toml"
-tag-message = true
+tag-relations = true
+tag-pointer = true
 ```
 
 - `version`: the version of the file's format, which is 1.
 - `exclude`: path prefixes, relative to the directory scanned, whose markers aren't checked, such as examples and test fixtures. None by default.
 - `registry`: the registry's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `.coupled-tags.toml` by default. The lint doesn't move a registry: when you change this, move the file too.
-- `tag-message`: whether each marker's label is followed by a message telling a reader who doesn't know the convention, such as an AI agent without the coupled-tags skill, what to search for and where the group is described. Off by default. `--fix` writes it, or drops it when it's off:
+- `tag-relations` and `tag-pointer`: what follows each marker's label, each `false` by default. `tag-relations` gives the site's own relations as seen from it, so any reader, a person in an editor among them, sees what must hold without opening the registry. `tag-pointer` says what to search for and which file describes the group, for a reader who doesn't know the convention, such as an AI agent without the coupled-tags skill or its hooks; a reader who knows it can do without. With both on, the relations come first. A site no relation names gets no relations. `--fix` writes the message from the registry, or drops it when both are off, and the lint reports one that differs from what `--fix` would write, so it's never stale:
 
   ```python
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= nginx.
   MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= nginx. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
   ```
 
 The file is optional. The lint reads the copy on disk in the directory it scans, so a branch that adds fixtures can exclude them in the same change. A file that isn't valid TOML, has no `version` or one the lint doesn't read, holds a setting it doesn't know, or names a registry outside the repository stops the run with `⚠️` and exit status 1, before anything is changed. It's read with [repo-settings](https://github.com/ianflanagan1/repo-settings), and its schema is in `schema/`.

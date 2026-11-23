@@ -20,7 +20,8 @@ from coupled_tags_lint.core.relations import (
     ref_text,
     refs,
 )
-from coupled_tags_lint.core.rewrite import written_after
+from coupled_tags_lint.core.rewrite import Wanted, wanted, written_after
+from coupled_tags_lint.core.settings import TagMessage
 from coupled_tags_lint.core.values import (
     Fails,
     Holds,
@@ -134,12 +135,13 @@ def check(
     registry: Registry | Unparseable | None,
     files: dict[str, FileRead],
     registry_file: str,
-    messages: bool,
+    message: TagMessage,
 ) -> list[Problem]:
     """The problems with sites and the registry at registry_file, given each file in this
-    repository that its groups refer to (see file_paths), and whether the settings turn on the
-    message after each marker's label. Other repositories aren't read."""
-    problems = _site_problems(sites) + _message_problems(sites, registry_file, messages)
+    repository that its groups refer to (see file_paths), and what the settings say follows each
+    marker's label. Other repositories aren't read."""
+    problems = _site_problems(sites)
+    problems += _message_problems(sites, wanted(markers(sites), registry, message, registry_file))
     keys: list[str] = []
     for site in sites:
         if isinstance(site.found, Marker) and site.found.key not in keys:
@@ -198,22 +200,28 @@ def _site_problems(sites: list[Site]) -> list[Problem]:
     return problems
 
 
-def _message_problems(sites: list[Site], registry_file: str, messages: bool) -> list[Problem]:
+def markers(sites: list[Site]) -> list[tuple[str, str]]:
+    """The key and label of each labelled marker in sites, in order."""
+    return [
+        (site.found.key, site.found.label)
+        for site in sites
+        if isinstance(site.found, Marker) and site.found.label is not None
+    ]
+
+
+def _message_problems(sites: list[Site], messages: Wanted) -> list[Problem]:
     problems: list[Problem] = []
     for site in sites:
         if not isinstance(site.found, Marker) or site.found.label is None:
             continue
-        if written_after(site.after, site.found.key, registry_file, messages) is None:
+        message = messages.get((site.found.key, site.found.label))
+        if written_after(site.after, message) is None:
             continue
-        if messages:
-            message = (
-                "Write the message after this marker's label, as tag-message is on; --fix writes it"
-            )
+        if message is None:
+            text = "Drop the message after this marker's label, as the settings give it none"
         else:
-            message = (
-                "Drop the message after this marker's label, as tag-message is off; --fix drops it"
-            )
-        problems.append(Problem(site.where, message))
+            text = f"Write the message after this marker's label as `. {message}`"
+        problems.append(Problem(site.where, f"{text}; --fix does it"))
     return problems
 
 
@@ -461,6 +469,12 @@ def _relation(
         case Holds():
             return []
         case Fails(shown):
-            return [Problem(where, f"`{text}` doesn't hold with {other_where}: {shown}")]
+            return [
+                Problem(
+                    where,
+                    f"`{text}` doesn't hold with {other_where}: {shown}. Change the values so it "
+                    "holds; change the relation only if what must hold has changed",
+                )
+            ]
         case Incomparable(reason):
             return [Problem(where, f"Can't compare with {other_where} for `{text}`: {reason}")]
