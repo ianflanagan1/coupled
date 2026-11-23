@@ -1,4 +1,4 @@
-"""Reading the value a tag describes, and comparing two values under an op and formula."""
+"""Reading the value a marker describes, and comparing two values under an op and formula."""
 
 import json
 import re
@@ -7,7 +7,8 @@ from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import assert_never, final
 
 from coupled_tags_lint.core.comments import is_comment_line, strip_comment
-from coupled_tags_lint.core.tags import Arith, Formula, Placed, ValueOp
+from coupled_tags_lint.core.markers import Placed
+from coupled_tags_lint.core.relations import Arith, Formula, ValueOp
 
 
 @final
@@ -30,63 +31,56 @@ _QUOTED = re.compile(r"'([^']*)'|\"([^\"]*)\"|`([^`]*)`")
 _IMAGE = re.compile(r"(?:^\s*FROM\s+(?:--\S+\s+)*|\bimage:\s*)[^\s:]+:v?(\d+(?:\.\d+)*)")
 _ASSIGNMENT = re.compile(r"^\s*(?:[\w$]+\s+)*?[\w.$-]+\s*[=:]\s*([^\s;,]+)\s*[;,]?\s*\\?$")
 _DIRECTIVE = re.compile(r"^\s*[\w.-]+(?:\s+[~^=*]+)?\s+([^\s;{]+)\s*[;{]?\s*$")
-_DECLARED = re.compile(r"^\s*(?:[\w$]+\s+)*?([\w$][\w.$-]*)\s*(?:=(?!=)|:(?![:/]))")
-_DIRECTIVE_NAME = re.compile(r"^\s*([\w.-]+)(?:\s+[~^=*]+)?\s+[^\s;{]+\s*[;{]\s*$")
 
 _VERSION = re.compile(r"v?(\d+(?:\.\d+)*)")
 _NUMBER = re.compile(r"(-?\d[\d_]*(?:\.\d+)?)\s*[A-Za-z%]*")
 _UNIT = re.compile(r"-?\d[\d_]*(?:\.\d+)?\s*([A-Za-z%]*)")
 
 
-def value_line(lines: list[str], start: int, end: int) -> str | None:
-    """The code of the line a tag describes, without its comment, for a tag starting on
-    lines[start] and ending on lines[end]: the start line's code before the comment holding the
-    tag, or if it has none, the first line after the tag that isn't a comment. None if there's
-    no such line, or a blank line comes first."""
-    described = described_line(lines, start, end)
+def value_line(lines: list[str], index: int) -> str | None:
+    """The code of the line a marker on lines[index] describes, without its comment: the
+    marker's own line's code before its comment, or if it has none, the first line after it
+    that isn't a comment. None if there's no such line, or a blank line comes first."""
+    described = described_line(lines, index)
     if described is None:
         return None
-    return strip_comment(_head(lines[start]) if described == start else lines[described]).strip()
+    return strip_comment(_head(lines[index]) if described == index else lines[described]).strip()
 
 
 def _head(line: str) -> str:
-    """line up to the tag on it."""
+    """line up to the marker on it."""
     return line[: line.find("COUPLED:")] if "COUPLED:" in line else line
 
 
-def described_line(lines: list[str], start: int, end: int) -> int | None:
-    """The index of the line a tag starting on lines[start] and ending on lines[end] describes:
-    the start line if it has code before the tag's comment, or else the first line after the tag
-    that isn't a comment. None if there's no such line, or a blank line comes first."""
-    if strip_comment(_head(lines[start])).strip():
-        return start
-    for index in range(end + 1, len(lines)):
-        if not lines[index].strip():
+def described_line(lines: list[str], index: int) -> int | None:
+    """The index of the line a marker on lines[index] describes: its own line if it has code
+    before the marker's comment, or else the first line after it that isn't a comment. None if
+    there's no such line, or a blank line comes first."""
+    if strip_comment(_head(lines[index])).strip():
+        return index
+    for after in range(index + 1, len(lines)):
+        if not lines[after].strip():
             return None
-        if not is_comment_line(lines[index]):
-            return index
+        if not is_comment_line(lines[after]):
+            return after
     return None
 
 
-def block_lines(lines: list[str], tag: Placed, placed: list[Placed]) -> list[str]:
-    """The lines of code a tag describes, each stripped, without blank lines: the line
-    value_line gives, then, if an END closes the tag, the lines down to the END. The tags of
-    blocks inside it, placed being every tag in lines, are left out of it, so rewording them
-    doesn't change it. Empty if the tag describes no line, or its END comes first."""
-    first = described_line(lines, tag.line, tag.end)
-    if first is None or (tag.close is not None and first > tag.close):
+def block_lines(lines: list[str], marker: Placed, placed: list[Placed]) -> list[str]:
+    """The lines of code a marker describes, each stripped, without blank lines: the line
+    value_line gives, then, if an END closes the marker, the lines down to the END. The markers
+    of blocks inside it, placed being every marker in lines, are left out of it, so rewording
+    them doesn't change it. Empty if the marker describes no line, or its END comes first."""
+    first = described_line(lines, marker.line)
+    if first is None or (marker.close is not None and first > marker.close):
         return []
-    code = value_line(lines, tag.line, tag.end) if first == tag.line else lines[first].strip()
+    code = value_line(lines, marker.line) if first == marker.line else lines[first].strip()
     assert code is not None
-    if tag.close is None:
+    if marker.close is None:
         return [code]
-    inner = [other for other in placed if first < other.line < tag.close]
-    run_on = {index for other in inner for index in range(other.line + 1, other.end + 1)}
-    starts = {other.line for other in inner}
+    starts = {other.line for other in placed if first < other.line < marker.close}
     block = [code]
-    for index in range(first + 1, tag.close):
-        if index in run_on:
-            continue
+    for index in range(first + 1, marker.close):
         line = strip_comment(_head(lines[index])) if index in starts else lines[index]
         if line.strip():
             block.append(line.strip())
@@ -112,20 +106,8 @@ def read_value(code: str, selector: str | None) -> Reading:
     return Unreadable(f"`{code}` has no single value")
 
 
-def declared_name(code: str) -> str | None:
-    """The name a line of code gives its value: the last word left of an assignment
-    (`const LIMIT = 8`, `node-version: "24"`), or a directive's name (`client_max_body_size
-    10m;`). None for an image's version, or a line that names nothing."""
-    if _IMAGE.search(code):
-        return None
-    for pattern in (_DECLARED, _DIRECTIVE_NAME):
-        if (match := pattern.match(code)) is not None:
-            return match.group(1)
-    return None
-
-
 def read_file_value(content: str, pointer: str | None) -> Reading | None:
-    """The value in a file a tag refers to: at the JSON Pointer, or if there's none, the whole
+    """The value in a file a group refers to: at the JSON Pointer, or if there's none, the whole
     file when it's one line. None when there's no pointer and the file is longer, so the ref
     only lists the file."""
     if pointer is None:

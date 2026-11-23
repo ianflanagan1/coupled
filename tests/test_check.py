@@ -1,485 +1,206 @@
-import unittest
+"""The checks of a repository's groups, given its files as text and its registry."""
 
-from coupled_tags_lint.core.check import (
-    Content,
-    FileRead,
-    Missing,
-    Problem,
-    Site,
-    check,
-    file_sites,
-    fixes,
-    unchecked,
-)
+from coupled_tags_lint.core.check import Content, FileRead, Missing, Problem, check, file_sites
+from coupled_tags_lint.core.registry import Registry, parse
+
+REGISTRY = ".coupled-tags.toml"
 
 
-def sites(*files: str) -> list[Site]:
-    """A site for each tag in files, each being the text of its own file `<n>.txt`."""
-    return [
-        site
-        for number, text in enumerate(files, start=1)
-        for site in file_sites(f"{number}.txt", text.splitlines())
+def problems(
+    files: dict[str, str],
+    groups: str | None,
+    others: dict[str, FileRead],
+    messages: bool,
+) -> list[Problem]:
+    sites = [site for path, text in files.items() for site in file_sites(path, text.splitlines())]
+    registry = None if groups is None else parse("version = 1\n" + groups)
+    return check(sites, registry, others, REGISTRY, messages)
+
+
+def messages_of(found: list[Problem]) -> list[str]:
+    return [f"{problem.where} {problem.message}" for problem in found]
+
+
+UPLOAD = """
+["COUPLED:upload-limit:"]
+relations = ["nginx >= app"]
+"""
+
+UPLOAD_FILES = {
+    "nginx.conf": "client_max_body_size 10m;  # COUPLED:upload-limit: nginx",
+    "app.py": "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app",
+}
+
+
+def test_a_group_whose_relations_hold_has_no_problems() -> None:
+    assert problems(UPLOAD_FILES, UPLOAD, {}, False) == []
+
+
+def test_a_relation_that_does_not_hold_is_reported_at_its_first_site() -> None:
+    found = problems(
+        {**UPLOAD_FILES, "app.py": "MAX_UPLOAD_MB = 12  # COUPLED:upload-limit: app"},
+        UPLOAD,
+        {},
+        False,
+    )
+    assert messages_of(found) == [
+        "nginx.conf:1 `nginx >= app` doesn't hold with app.py:1: 10m >= 12"
     ]
 
 
-def named(**files: str) -> list[Site]:
-    """A site for each tag in files, by name, with `_` in a name read as `.`."""
-    return [
-        site
-        for name, text in files.items()
-        for site in file_sites(name.replace("_", "."), text.splitlines())
-    ]
+def test_a_repository_with_markers_and_no_registry_is_reported() -> None:
+    [problem] = problems(UPLOAD_FILES, None, {}, False)
+    assert problem.where == REGISTRY
+    assert "There's no registry" in problem.message
 
 
-def messages(problems: list[Problem]) -> list[str]:
-    return [f"{problem.where} {problem.message}" for problem in problems]
+def test_a_key_with_no_table_is_reported_at_its_first_site() -> None:
+    [problem] = problems(UPLOAD_FILES, "", {}, False)
+    assert problem.where == "nginx.conf:1"
+    assert '["COUPLED:upload-limit:"]' in problem.message
 
 
-def fixed(group: list[Site], files: dict[str, FileRead]) -> dict[str, str]:
-    """Each tag fixes rewrites, by `path:line`, as it would write it."""
-    return {f"{fix.path}:{fix.line + 1}": fix.tag.relation() for fix in fixes(group, files)}
+def test_a_label_no_marker_has_is_reported() -> None:
+    found = problems(UPLOAD_FILES, UPLOAD.replace("app", "application"), {}, False)
+    assert any("No site is labelled `application`" in m for m in messages_of(found))
 
 
-ONE = {name: Content("1") for name in (".nvmrc", "x.txt", "y.txt", ".env")}
-
-
-class Closes(unittest.TestCase):
-    def test_a_problem_with_an_end_is_reported_at_it(self) -> None:
-        self.assertEqual(
-            [
-                "1.txt:3 Drop this END: the tag of COUPLED:x: on line 1 has a value op, so it "
-                "describes only the line after it"
-            ],
-            messages(
-                check(
-                    sites("# COUPLED:x:[=]\nX = 1\n# COUPLED:x:END", "Y = 1  # COUPLED:x:[=]"), {}
-                )
-            ),
-        )
-
-    def test_an_end_is_not_a_site_of_its_group(self) -> None:
-        self.assertEqual(
-            ["1.txt:1 Orphan key with only one site"],
-            messages(check(sites("# COUPLED:x:[same-as]\nf()\n# COUPLED:x:END"), {})),
-        )
-
-
-class Groups(unittest.TestCase):
-    def test_a_key_with_two_agreeing_sites_is_clean(self) -> None:
-        self.assertEqual([], check(sites("X = 1  # COUPLED:x:[=]", "x 1;  # COUPLED:x:[=]"), {}))
-
-    def test_a_key_with_one_site_is_an_orphan(self) -> None:
-        self.assertEqual(
-            ["1.txt:1 Orphan key with only one site"],
-            messages(check(sites("X = 1  # COUPLED:x:[=]"), {})),
-        )
-
-    def test_a_single_site_referring_to_another_repository_is_not_an_orphan(self) -> None:
-        self.assertEqual([], check(sites("X = 1  # COUPLED:x:[=; //github.com/me/x/a.py]"), {}))
-
-    def test_a_single_site_referring_to_a_file_is_not_an_orphan(self) -> None:
-        self.assertEqual([], check(sites("X = 1  # COUPLED:x:[=; ./.nvmrc]"), ONE))
-
-    def test_a_malformed_tag_is_reported(self) -> None:
-        self.assertIn(
-            "1.txt:1 Malformed tag", " ".join(messages(check(sites("# COUPLED:X:[=]"), {})))
-        )
-
-    def test_a_malformed_tag_says_what_a_key_is(self) -> None:
-        self.assertIn(
-            "lowercase letters and digits, in words joined by single hyphens",
-            " ".join(messages(check(sites("# COUPLED:-x:[=]"), {}))),
-        )
-
-    def test_a_clause_problem_is_reported_at_its_tag(self) -> None:
-        problems = messages(
-            check(sites("# COUPLED:x:[equals Y]", "# COUPLED:x:[same-as]\ntype A struct {"), {})
-        )
-        self.assertIn(
-            "1.txt:1 Start each clause with an op (= != < <= > >= same-as same-shape",
-            " ".join(problems),
-        )
-
-    def test_a_group_without_an_op_is_reported(self) -> None:
-        self.assertIn(
-            "Give a tag of COUPLED:x: an op",
-            " ".join(messages(check(sites("X = 1  # COUPLED:x:[]", "Y = 1  # COUPLED:x:[]"), {}))),
-        )
-
-    def test_a_bare_op_in_a_group_that_mixes_ops_is_reported(self) -> None:
-        problems = messages(check(sites("X = 1  # COUPLED:x:[=]", "Y = 1  # COUPLED:x:[>= X]"), {}))
-        self.assertIn(
-            "1.txt:1 Name the other value after =: its group mixes ops", " ".join(problems)
-        )
-
-    def test_a_group_mixing_value_and_structural_ops_is_reported(self) -> None:
-        problems = messages(
-            check(sites("X = 1  # COUPLED:x:[=]", "# COUPLED:x:[same-as]\ntype A struct {"), {})
-        )
-        self.assertIn("2.txt:1 Use only value ops", " ".join(problems))
-
-    def test_structural_groups_are_not_compared(self) -> None:
-        lines = (
-            "# COUPLED:x:[same-shape]\ntype A struct {",
-            "# COUPLED:x:[same-shape]\ntype A struct {",
-            "a = 1  # COUPLED:y:[subset-of c]",
-            "c = 2  # COUPLED:y:[superset-of a]",
-        )
-        self.assertEqual([], check(sites(*lines), {}))
-
-
-class BareEquals(unittest.TestCase):
-    def test_bare_equal_sites_that_differ_are_reported_at_the_odd_one(self) -> None:
-        problems = messages(
-            check(
-                sites(
-                    "A = 'a'  # COUPLED:x:[=]",
-                    "B = 'a'  # COUPLED:x:[=]",
-                    "C = 'c'  # COUPLED:x:[=]",
-                ),
-                {},
-            )
-        )
-        self.assertEqual(["3.txt:1 Relation doesn't hold with 1.txt:1: `c` = `a`"], problems)
-
-    def test_a_file_joins_a_group_of_bare_equals(self) -> None:
-        group = sites(
-            "FROM node:24.22.1  # COUPLED:v:[=; ./.nvmrc]",
-            "image: node:24.22.1  # COUPLED:v:[=; ./.nvmrc]",
-        )
-        self.assertEqual([], check(group, {".nvmrc": Content("24\n")}))
-        problems = messages(check(group, {".nvmrc": Content("22\n")}))
-        self.assertEqual(["./.nvmrc Relation doesn't hold with 1.txt:1: 22 = 24.22.1"], problems)
-
-    def test_an_unreadable_site_says_how_to_pick_its_value(self) -> None:
-        problems = messages(
-            check(sites("RUN mkdir /tmp/p \\  # COUPLED:x:[=]", "x = /tmp/p  # COUPLED:x:[=]"), {})
-        )
-        self.assertIn("1.txt:1 Can't read this site's value", " ".join(problems))
-        self.assertIn("@/<regex>/", " ".join(problems))
-
-    def test_an_unreadable_file_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=; ./a.json#/x]", "Y = 1  # COUPLED:x:[=; ./a.json#/x]")
-        problems = messages(check(group, {"a.json": Content('{"y": 1}')}))
-        self.assertEqual(
-            ["./a.json#/x Can't read this site's value: it has nothing at #/x"], problems
-        )
-
-
-class Equations(unittest.TestCase):
-    def test_a_relation_that_holds_is_clean_from_both_ends(self) -> None:
-        group = sites(
-            "client_max_body_size 10m;  # COUPLED:u:[>= MAX_UPLOAD_MB]",
-            "MAX_UPLOAD_MB = 8  # COUPLED:u:[<= client_max_body_size]",
-        )
-        self.assertEqual([], check(group, {}))
-
-    def test_a_relation_that_fails_is_reported_with_its_values(self) -> None:
-        group = sites(
-            "client_max_body_size 6m;  # COUPLED:u:[>= MAX_UPLOAD_MB]",
-            "MAX_UPLOAD_MB = 8  # COUPLED:u:[<= client_max_body_size]",
-        )
-        self.assertEqual(
-            [
-                "1.txt:1 Relation doesn't hold with 2.txt:1: 6m >= 8",
-                "2.txt:1 Relation doesn't hold with 1.txt:1: 8 <= 6m",
-            ],
-            messages(check(group, {})),
-        )
-
-    def test_a_formula_converts_units(self) -> None:
-        group = sites(
-            "server.keepAliveTimeout = 65_000;  // COUPLED:k:[> Idle timeout * 1000]",
-            "Idle timeout: `60` s. COUPLED:k:[< server.keepAliveTimeout / 1000]",
-        )
-        self.assertEqual([], check(group, {}))
-
-    def test_a_tag_relates_several_sites_and_files(self) -> None:
-        group = named(
-            c_php="$c = 12; // COUPLED:example:[= $d - 1; = $e - 2; ./a.json#/a; ./b.json#/b]",
-            d_php="$d = 13; // COUPLED:example:[= $c + 1; = $e - 1; ./a.json#/a; ./b.json#/b]",
-            e_php="$e = 14; // COUPLED:example:[= $d + 1; = $c + 2; = ./b.json#/b + 3; "
-            "= ./a.json#/a + 4]",
-        )
-        files: dict[str, FileRead] = {
-            "a.json": Content('{"a": 10}'),
-            "b.json": Content('{"b": 11}'),
-        }
-        self.assertEqual([], check(group, files))
-        files["a.json"] = Content('{"a": 9}')
-        self.assertEqual(
-            ["e.php:1 Relation doesn't hold with ./a.json#/a: 14 = 9 + 4 (= 13)"],
-            messages(check(group, files)),
-        )
-
-    def test_a_name_no_other_site_has_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[< Z]", "Y = 2  # COUPLED:x:[> X]")
-        self.assertIn(
-            "1.txt:1 No other site of COUPLED:x: has `Z`", " ".join(messages(check(group, {})))
-        )
-
-    def test_a_name_matches_only_as_a_whole_name_with_its_case(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[< X]", "MAX_X = 2  # COUPLED:x:[> x]")
-        problems = " ".join(messages(check(group, {})))
-        self.assertIn("1.txt:1 No other site of COUPLED:x: has `X`", problems)
-        self.assertIn("2.txt:1 No other site of COUPLED:x: has `x`", problems)
-
-    def test_a_name_matches_the_site_declaring_it_before_one_mentioning_it(self) -> None:
-        group = sites(
-            "A = 1  # COUPLED:x:[< B; < C]",
-            "B = 2  # COUPLED:x:[> A; = C - 1]",
-            r"C = max(B, 3)  # COUPLED:x:[> A; = B + 1; @/(\d+)\)/]",
-        )
-        self.assertEqual([], check(group, {}))
-
-    def test_an_equation_can_relate_a_file(self) -> None:
-        group = sites("FROM php:8.5-fpm  # COUPLED:p:[= ./.php-version]")
-        self.assertEqual([], check(group, {".php-version": Content("8.5.1")}))
-
-    def test_a_selector_picks_the_value_to_compare(self) -> None:
-        group = sites(
-            r"APP_URL=http://localhost:8080  # COUPLED:port:[= HTTP_PORT; @/:(\d+)$/]",
-            "HTTP_PORT=8080  # COUPLED:port:[= APP_URL]",
-        )
-        self.assertEqual([], check(group, {}))
-
-
-class AmbiguousNames(unittest.TestCase):
-    GROUP = (
-        "$a = 1;  // COUPLED:x:[= $c - 2]",
-        "$a = 2;  // COUPLED:x:[= $c - 1]",
+def test_two_sites_with_one_label_are_reported() -> None:
+    found = problems(
+        {**UPLOAD_FILES, "other.py": "LIMIT = 8  # COUPLED:upload-limit: app"}, UPLOAD, {}, False
+    )
+    assert any(
+        p.where == "other.py:1" and "labelled `app`, at app.py:1" in p.message for p in found
     )
 
-    def test_a_name_several_sites_declare_is_reported_with_how_to_say_which(self) -> None:
-        group = sites(*self.GROUP, "$c = 3;  // COUPLED:x:[= $a + 1]")
-        self.assertIn(
-            "3.txt:1 `$a` names several sites: 1.txt:1, 2.txt:1. Say which with its file: "
-            "`./1.txt#$a`",
-            messages(check(group, {})),
-        )
 
-    def test_a_name_in_its_file_picks_out_one_site(self) -> None:
-        group = sites(*self.GROUP, "$c = 3;  // COUPLED:x:[= ./2.txt#$a + 1; = ./1.txt#$a + 2]")
-        self.assertEqual([], check(group, {}))
-
-    def test_a_file_alone_picks_out_its_one_site(self) -> None:
-        group = sites(*self.GROUP, "$c = 3;  // COUPLED:x:[= ./2.txt + 1; = ./1.txt + 2]")
-        self.assertEqual([], check(group, {}))
-
-    def test_a_file_holding_several_sites_needs_a_name(self) -> None:
-        group = named(
-            a_php="$a = 1;  // COUPLED:x:[= $c - 2]\n$b = 2;  // COUPLED:x:[= $c - 1]",
-            c_php="$c = 3;  // COUPLED:x:[= ./a.php + 1]",
-        )
-        self.assertIn(
-            "c.php:1 `./a.php` holds several tags of COUPLED:x:. Say which with the name of its "
-            "value: `./a.php#<name>`",
-            messages(check(group, {})),
-        )
-
-    def test_a_pointer_into_a_tagged_file_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[= ./2.txt#/a]", "Y = 1  # COUPLED:x:[= X]")
-        self.assertIn(
-            "1.txt:1 Drop #/a: `./2.txt` holds tags of COUPLED:x:", messages(check(group, {}))[0]
-        )
-
-    def test_a_name_into_a_file_without_tags_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[= ./a.json#a]")
-        self.assertIn(
-            "1.txt:1 Point into `./a.json` with a JSON Pointer",
-            " ".join(messages(check(group, {"a.json": Content('{"a": 1}')}))),
-        )
+def test_a_site_nothing_relates_is_reported() -> None:
+    found = problems(
+        {**UPLOAD_FILES, "php.ini": "upload_max_filesize = 8M ; COUPLED:upload-limit: php"},
+        UPLOAD,
+        {},
+        False,
+    )
+    assert any(p.where == "php.ini:1" and "Nothing relates" in p.message for p in found)
 
 
-class Mirrors(unittest.TestCase):
-    def test_an_equation_missing_at_its_other_site_is_reported_there(self) -> None:
-        group = sites("$d = 13;  // COUPLED:x:[]", "$e = 14;  // COUPLED:x:[= $d + 1]")
-        self.assertEqual(
-            [
-                "1.txt:1 Add `= $e - 1` to this tag, the mirror of `= $d + 1` at 2.txt:1: an "
-                "equation is written at both its sites; --fix adds it"
-            ],
-            messages(check(group, {})),
-        )
-
-    def test_the_fix_adds_the_mirror(self) -> None:
-        group = sites("$d = 13;  // COUPLED:x:[]", "$e = 14;  // COUPLED:x:[= $d + 1]")
-        self.assertEqual({"1.txt:1": "= $e - 1"}, fixed(group, {}))
-
-    def test_a_mirror_flips_the_op_and_undoes_the_formula(self) -> None:
-        for stated, mirrored in (
-            ("< $d * 2", "> $e / 2"),
-            ("<= $d / 2", ">= $e * 2"),
-            ("> $d - 3", "< $e + 3"),
-            ("!= $d", "!= $e"),
-        ):
-            group = sites("$d = 1;  // COUPLED:x:[]", f"$e = 1;  // COUPLED:x:[{stated}]")
-            self.assertEqual({"1.txt:1": mirrored}, fixed(group, {}), stated)
-
-    def test_a_structural_mirror_swaps_subset_and_superset(self) -> None:
-        group = sites("a = 1  # COUPLED:y:[subset-of c]", "c = 2  # COUPLED:y:[]")
-        self.assertEqual({"2.txt:1": "superset-of a"}, fixed(group, {}))
-
-    def test_a_bare_op_at_the_other_site_is_its_mirror(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=]", "Y = 1  # COUPLED:x:[= X]")
-        self.assertEqual([], check(group, {}))
-
-    def test_two_equations_that_do_not_mirror_each_other_are_reported_once(self) -> None:
-        group = sites("$d = 13;  // COUPLED:x:[= $e - 2]", "$e = 14;  // COUPLED:x:[= $d + 1]")
-        problems = [
-            message for message in messages(check(group, {})) if "doesn't hold" not in message
-        ]
-        self.assertEqual(
-            [
-                "1.txt:1 `= $e - 2` here and `= $d + 1` at 2.txt:1 don't mirror each other: that "
-                "one would be `= $d + 2`. Change one to match the other"
-            ],
-            problems,
-        )
-        self.assertEqual({}, fixed(group, {}))
-
-    def test_a_mirror_names_a_site_as_other_tags_already_do(self) -> None:
-        group = named(
-            a_php="$a = 1;  // COUPLED:x:[= $c - 2]",
-            b_php="$a = 2;  // COUPLED:x:[= $c - 1]",
-            c_php="$c = 3;  // COUPLED:x:[= ./b.php#$a + 1]",
-        )
-        self.assertEqual({"c.php:1": "= ./b.php#$a + 1; = ./a.php#$a + 2"}, fixed(group, {}))
-
-    def test_a_mirror_is_not_added_to_a_tag_with_a_ref_that_does_not_resolve(self) -> None:
-        group = named(
-            a_php="$a = 1;  // COUPLED:x:[= $c - 2]",
-            b_php="$a = 2;  // COUPLED:x:[= $c - 1]",
-            c_php="$c = 3;  // COUPLED:x:[= $a + 1]",
-        )
-        self.assertEqual({}, fixed(group, {}))
-
-    def test_a_site_nothing_relates_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=]", "Y = 1  # COUPLED:x:[=]", "Z = 1  # COUPLED:x:[]")
-        self.assertIn("3.txt:1 Nothing relates this site", " ".join(messages(check(group, {}))))
+def test_a_bare_op_relates_every_site_and_file() -> None:
+    files = {
+        "Dockerfile": "# COUPLED:node-version: docker\nFROM node:24.22.1-slim",
+        "ci.yml": 'node-version: "24"  # COUPLED:node-version: ci',
+    }
+    groups = '["COUPLED:node-version:"]\nrelations = ["="]\nfiles = ["./.nvmrc"]\n'
+    assert problems(files, groups, {".nvmrc": Content("24.22\n")}, False) == []
+    found = problems(files, groups, {".nvmrc": Content("22\n")}, False)
+    assert messages_of(found) == ["./.nvmrc `=` doesn't hold with Dockerfile:1: 22 = 24.22.1"]
 
 
-class FilesTheGroupRefersTo(unittest.TestCase):
-    def test_tags_referring_to_the_same_files_in_any_order_are_clean(self) -> None:
-        group = sites(
-            "X = 1  # COUPLED:x:[=; ./x.txt; ./.nvmrc?]",
-            "x 1;  # COUPLED:x:[=; ./.nvmrc?; ./x.txt]",
-        )
-        self.assertEqual([], check(group, ONE))
-
-    def test_a_tag_is_told_to_add_the_files_other_tags_refer_to(self) -> None:
-        group = sites(
-            "X = 1  # COUPLED:x:[=; ./x.txt; ./y.txt]",
-            "x 1;  # COUPLED:x:[=; ./y.txt]",
-        )
-        self.assertEqual(
-            [
-                "2.txt:1 Add `./x.txt` to this tag: every tag of COUPLED:x: in a repository "
-                "refers to the same files; --fix adds it"
-            ],
-            messages(check(group, ONE)),
-        )
-        self.assertEqual({"2.txt:1": "=; ./y.txt; ./x.txt"}, fixed(group, ONE))
-
-    def test_a_file_an_equation_relates_counts_and_is_added_bare(self) -> None:
-        group = sites(
-            "X = 2  # COUPLED:x:[= ./x.txt + 1; = Y]",
-            "Y = 2  # COUPLED:x:[= X]",
-        )
-        self.assertEqual({"2.txt:1": "= X; ./x.txt"}, fixed(group, ONE))
-
-    def test_a_missing_file_is_not_added_to_other_tags(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=; ./gone.txt]", "Y = 1  # COUPLED:x:[=]")
-        self.assertEqual({}, fixed(group, {"gone.txt": Missing()}))
-
-    def test_a_file_in_another_repository_is_added_to_other_tags(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=; //github.com/a/b/c.py]", "Y = 1  # COUPLED:x:[=]")
-        self.assertEqual({"2.txt:1": "=; //github.com/a/b/c.py"}, fixed(group, {}))
-
-    def test_a_file_marked_differently_on_two_tags_is_reported_at_both(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=; ./.env?]", "x 1;  # COUPLED:x:[=; ./.env]")
-        self.assertEqual(
-            [
-                "1.txt:1 Write `./.env?` the same way on every tag of COUPLED:x:; another "
-                "writes it `./.env`",
-                "2.txt:1 Write `./.env` the same way on every tag of COUPLED:x:; another "
-                "writes it `./.env?`",
-            ],
-            messages(check(group, ONE)),
-        )
-
-    def test_a_file_the_search_already_finds_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=; ./2.txt]", "x 1;  # COUPLED:x:[=]")
-        self.assertEqual(
-            ["1.txt:1 Drop `./2.txt`: the search already finds its tag of COUPLED:x:"],
-            messages(check(group, {"2.txt": Content("x 1;")})),
-        )
-
-    def test_a_file_that_is_missing_is_reported(self) -> None:
-        problems = messages(check(sites("X = 1  # COUPLED:x:[=; ./.nvmrc]"), {".nvmrc": Missing()}))
-        self.assertEqual(1, len(problems))
-        self.assertIn("./.nvmrc A tag of COUPLED:x: refers to this file", problems[0])
-        self.assertIn("mark it optional: ./<path>?", problems[0])
-
-    def test_an_optional_file_that_is_missing_is_not_reported(self) -> None:
-        self.assertEqual([], check(sites("X = 1  # COUPLED:x:[=; ./.env?]"), {".env": Missing()}))
-
-    def test_a_longer_file_without_a_tag_or_pointer_is_reported_in_a_value_group(self) -> None:
-        problems = messages(
-            check(sites("X = 1  # COUPLED:x:[=; ./x.yaml]"), {"x.yaml": Content("a: 1\nb: 2\n")})
-        )
-        self.assertEqual(1, len(problems))
-        self.assertIn("it has no tag of COUPLED:x: and more than one line", problems[0])
-
-    def test_a_file_nothing_relates_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[< Y; ./x.txt]", "Y = 2  # COUPLED:x:[> X; ./x.txt]")
-        self.assertEqual(
-            [
-                "./x.txt Nothing relates this file: give a tag of COUPLED:x: an equation to it, "
-                "such as `= ./x.txt`"
-            ],
-            messages(check(group, ONE)),
-        )
-
-    def test_a_pointer_into_a_file_read_by_its_tags_is_reported(self) -> None:
-        group = sites("X = 1  # COUPLED:x:[=; ./x.json#/a]")
-        problems = messages(check(group, {"x.json": Content("x = 1  # COUPLED:x:[=]\n")}))
-        self.assertEqual(1, len(problems))
-        self.assertIn("./x.json#/a Drop #/a", problems[0])
-
-    def test_a_pointer_in_a_structural_group_is_not_reported(self) -> None:
-        group = sites("# COUPLED:s:[same-shape; ./x.json#/a]\ntype A struct {")
-        self.assertEqual([], check(group, {"x.json": Content("# COUPLED:s:[same-shape]\nB\n")}))
+def test_a_file_s_value_is_read_at_its_pointer() -> None:
+    groups = '["COUPLED:upload-limit:"]\nrelations = ["nginx = ./limits.json#/upload_mb"]\n'
+    files = {"nginx.conf": UPLOAD_FILES["nginx.conf"]}
+    assert problems(files, groups, {"limits.json": Content('{"upload_mb": 10}')}, False) == []
+    found = problems(files, groups, {"limits.json": Content('{"upload_mb": 5}')}, False)
+    assert "doesn't hold with ./limits.json#/upload_mb: 10m = 5" in messages_of(found)[0]
 
 
-class OtherRepositories(unittest.TestCase):
-    def test_the_repositories_referred_to_are_left_unchecked(self) -> None:
-        group = sites(
-            "X = 1  # COUPLED:x:[=; //github.com/me/infra/a.tf; //github.com/me/edge/b.tf]",
-            "x 1;  # COUPLED:x:[=; //github.com/me/infra/a.tf; //github.com/me/edge/b.tf]",
-        )
-        self.assertEqual([], check(group, {}))
-        self.assertEqual(["github.com/me/infra", "github.com/me/edge"], unchecked(group))
-
-    def test_a_name_no_site_here_has_is_left_unchecked_when_another_repository_is_named(
-        self,
-    ) -> None:
-        group = sites(
-            "X = 8  # COUPLED:x:[<= limit; //github.com/me/infra/a.tf]",
-            "Y = 8  # COUPLED:x:[= X; //github.com/me/infra/a.tf]",
-        )
-        problems = messages(check(group, {}))
-        self.assertNotIn("limit", " ".join(problems))
-
-    def test_sites_here_are_still_compared_when_another_repository_is_named(self) -> None:
-        group = sites(
-            "X = 1  # COUPLED:x:[=; //github.com/me/infra/a.tf]",
-            "x 2;  # COUPLED:x:[=; //github.com/me/infra/a.tf]",
-        )
-        self.assertEqual(
-            ["2.txt:1 Relation doesn't hold with 1.txt:1: 2 = 1"], messages(check(group, {}))
-        )
+def test_a_missing_file_is_reported_unless_it_is_optional() -> None:
+    groups = '["COUPLED:v:"]\nrelations = ["="]\nfiles = ["./.nvmrc", "./.env?"]\n'
+    files = {"a.txt": "X = 1  # COUPLED:v: a"}
+    found = problems(files, groups, {".nvmrc": Missing(), ".env": Missing()}, False)
+    assert [p.where for p in found] == ["./.nvmrc"]
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_a_group_of_files_alone_needs_no_marker() -> None:
+    groups = '["COUPLED:v:"]\nrelations = ["./.nvmrc = ./.tool-version"]\n'
+    others: dict[str, FileRead] = {".nvmrc": Content("24\n"), ".tool-version": Content("24\n")}
+    assert problems({}, groups, others, False) == []
+
+
+def test_a_group_with_one_member_is_reported() -> None:
+    groups = '["COUPLED:v:"]\nrelations = ["="]\n'
+    [problem] = problems({"a.txt": "X = 1  # COUPLED:v: a"}, groups, {}, False)
+    assert "needs at least two sites or files, and has 1" in problem.message
+
+
+def test_a_group_mixing_value_and_structural_ops_is_reported() -> None:
+    groups = '["COUPLED:upload-limit:"]\nrelations = ["nginx >= app", "app same-as nginx"]\n'
+    found = problems(UPLOAD_FILES, groups, {}, False)
+    assert any("either value ops or structural ops" in m for m in messages_of(found))
+
+
+def test_relating_two_sites_twice_is_reported() -> None:
+    groups = '["COUPLED:upload-limit:"]\nrelations = ["nginx >= app", "app <= nginx"]\n'
+    found = problems(UPLOAD_FILES, groups, {}, False)
+    assert any("in only one relation" in m for m in messages_of(found))
+
+
+def test_a_selector_picks_a_site_s_value() -> None:
+    files = {
+        "a.env": "APP_URL=http://localhost:8080  # COUPLED:port: url",
+        "b.env": "HTTP_PORT=8080  # COUPLED:port: port",
+    }
+    groups = '["COUPLED:port:"]\nrelations = ["url = port"]\nselect = { url = \':(\\d+)$\' }\n'
+    assert problems(files, groups, {}, False) == []
+
+
+def test_an_unreadable_value_asks_for_a_selector() -> None:
+    files = {**UPLOAD_FILES, "app.py": "f('a', 'b')  # COUPLED:upload-limit: app"}
+    found = problems(files, UPLOAD, {}, False)
+    assert any("select = { app = '<regex>' }" in m for m in messages_of(found))
+
+
+def test_an_end_after_a_marker_of_a_value_group_is_reported() -> None:
+    files = {
+        **UPLOAD_FILES,
+        "app.py": "# COUPLED:upload-limit: app\nMAX = 8\n# COUPLED:upload-limit:END",
+    }
+    found = problems(files, UPLOAD, {}, False)
+    assert any("Drop the END" in m for m in messages_of(found))
+
+
+def test_a_structural_group_s_relations_are_not_compared() -> None:
+    files = {
+        "a.py": "# COUPLED:vat: invoice\ndef vat(n):\n    return n / 5\n# COUPLED:vat:END",
+        "b.py": "# COUPLED:vat: cart\ndef vat(n):\n    return n // 5\n# COUPLED:vat:END",
+    }
+    assert problems(files, '["COUPLED:vat:"]\nrelations = ["same-as"]\n', {}, False) == []
+
+
+def test_a_marker_with_a_blank_line_before_its_code_is_reported() -> None:
+    files = {**UPLOAD_FILES, "app.py": "# COUPLED:upload-limit: app\n\nMAX = 8"}
+    found = problems(files, UPLOAD, {}, False)
+    assert any(p.where == "app.py:1" and "no blank line" in p.message for p in found)
+
+
+def test_with_messages_on_a_marker_without_its_message_is_reported() -> None:
+    found = problems(UPLOAD_FILES, UPLOAD, {}, True)
+    assert len(found) == 2
+    assert all("--fix writes it" in p.message for p in found)
+    written = {
+        path: text
+        + '. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.'
+        for path, text in UPLOAD_FILES.items()
+    }
+    assert problems(written, UPLOAD, {}, True) == []
+
+
+def test_with_messages_off_a_marker_with_a_message_is_reported() -> None:
+    written = {
+        **UPLOAD_FILES,
+        "app.py": UPLOAD_FILES["app.py"]
+        + '. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.',
+    }
+    [problem] = problems(written, UPLOAD, {}, False)
+    assert problem.where == "app.py:1" and "--fix drops it" in problem.message
+
+
+def test_a_registry_that_cannot_be_read_is_reported() -> None:
+    sites = file_sites("a.py", ["X = 1  # COUPLED:x: a"])
+    [problem] = check(sites, parse("nope ="), {}, REGISTRY, False)
+    assert "Can't read the registry" in problem.message
+
+
+def test_markers_alone_are_checked_even_without_a_registry() -> None:
+    sites = file_sites("a.py", ["# COUPLED:x:[= Y]"])
+    assert any("registry" in p.message for p in check(sites, None, {}, REGISTRY, False))
+    assert isinstance(parse("version = 1\n"), Registry)

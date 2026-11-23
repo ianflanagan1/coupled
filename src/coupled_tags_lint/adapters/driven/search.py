@@ -1,4 +1,5 @@
-"""Finding the files that hold `COUPLED:` with git grep, or grep outside a git work tree."""
+"""Finding the files and lines that hold `COUPLED:` with git grep, or grep outside a git work
+tree."""
 
 import subprocess
 from typing import final
@@ -39,3 +40,23 @@ class GrepSearch:
             ]
         output = subprocess.run(command, cwd=root, capture_output=True, text=True).stdout
         return [path.removeprefix("./") for path in output.splitlines() if path]
+
+    def root(self, directory: str) -> str | None:
+        """The top of the git work tree holding directory, or None outside one."""
+        done = subprocess.run(
+            ["git", "-C", directory, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+        )
+        return done.stdout.strip() if done.returncode == 0 else None
+
+    def hits(self, root: str, text: str) -> list[str]:
+        """Each line holding text in the work tree at root, tracked or untracked and not
+        ignored, as `path:line:text`."""
+        done = subprocess.run(
+            ["git", "-C", root, "grep", "--untracked", "-I", "--line-number"]
+            + ["--fixed-strings", text, "--", "."],
+            capture_output=True,
+            text=True,
+        )
+        return done.stdout.splitlines()

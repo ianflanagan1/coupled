@@ -1,0 +1,35 @@
+# COUPLED groups: values or code in several places that must change together. Each table is a
+# group, named as its markers are searched for; its relations relate the sites, by the labels
+# on their markers (`COUPLED:<key>: <label>`). Before changing a marked line, read every site
+# of its group, change them together so every relation holds, then run coupled-tags-lint. See
+# https://github.com/ianflanagan1/coupled-tags-lint.
+version = 1
+
+["COUPLED:cli-kit-version:"]
+relations = ["="]
+select = { flake = 'cli-kit/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"' }
+
+["COUPLED:git-default-branch-version:"]
+relations = ["="]
+select = { flake = 'git-default-branch/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"' }
+
+["COUPLED:repo-settings-version:"]
+relations = ["="]
+select = { flake = 'repo-settings/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"' }
+
+# Written by coupled-tags-lint --update: each group as it was last reviewed. Don't edit below this line.
+
+[reviewed."COUPLED:cli-kit-version:"]
+definition = "1ff1fb538e1e30b2"
+"COUPLED:cli-kit-version: flake" = {}
+"COUPLED:cli-kit-version: pyproject" = {}
+
+[reviewed."COUPLED:git-default-branch-version:"]
+definition = "c185f1966b4709ee"
+"COUPLED:git-default-branch-version: flake" = {}
+"COUPLED:git-default-branch-version: pyproject" = {}
+
+[reviewed."COUPLED:repo-settings-version:"]
+definition = "67fa31a581a31332"
+"COUPLED:repo-settings-version: flake" = {}
+"COUPLED:repo-settings-version: pyproject" = {}

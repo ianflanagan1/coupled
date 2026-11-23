@@ -5,34 +5,33 @@ import os
 from cli_kit import cli, outcome
 from cli_kit.outcome import Done, NothingToDo, Precondition
 
-from coupled_tags_lint.core.lock import LOCK_FILE
-from coupled_tags_lint.core.settings import Invalid
+from coupled_tags_lint.core.settings import REGISTRY_FILE, Invalid
 from coupled_tags_lint.orchestrators.lint import Lint, Report
 
 _PROG = "coupled-tags-lint"
 
 _DESCRIPTION = f"""\
-Check the COUPLED:<key>: tags in a repository.
+Check the COUPLED:<key>: <label> markers in a repository against its registry.
 
-Reports malformed tags and clauses, orphan keys, refs that name no site or
-several, an equation between two tagged sites that isn't written at both, a tag
-that doesn't refer to every file the others do, files that aren't there, sites
-and files nothing relates, and in groups using = != < <= > >=, values that
-can't be read and relations that don't hold. Files in other repositories aren't
-checked, and the status line lists their repositories.
+The registry, {REGISTRY_FILE} at <dir> by default, holds a table for each group,
+["COUPLED:<key>:"], whose relations relate its sites, by their labels, and the
+files that can't hold a marker. Reports malformed markers, a marker whose key
+has no table, labels that no marker or more than one has, files that aren't
+there, sites and files nothing relates, and in groups using = != < <= > >=,
+values that can't be read and relations that don't hold. Files in other
+repositories aren't checked, and the status line lists their repositories.
 
---fix adds what it can to the tags: the mirror of an equation another tag
-states, and the files the group's other tags refer to.
-
-It also compares the groups with the lock, which records each group's sites and
-relations, the unit on each value, and a fingerprint of each block a structural
-op relates. A site added or removed, a relation or unit changed or a
-block edited is reported until the group is reviewed and recorded with --update.
+It also compares the groups with the registry's reviewed section, which records
+each group's table, the unit on each value, and a fingerprint of each block a
+structural op relates. A table changed, a site added or removed, a unit changed
+or a block edited is reported until the group is reviewed and recorded with
+--update.
 
 <dir>/.config/ianf-coupled-tags.toml, if it's there, sets beside version = 1 the
-path prefixes to exclude on every run, as exclude = ["docs", "tests"], and the
-lock file, as lock-file = ".config/coupled-tags.lock". The lock is
-<dir>/{LOCK_FILE} unless it's set.
+path prefixes to exclude on every run, as exclude = ["docs", "tests"], the
+registry, as registry = ".config/coupled.toml", and with tag-message = true, a
+message after each marker's label saying where its group is described, which
+--fix writes.
 
 Exit status: 0 clean, 1 problems found, 2 usage error."""
 
@@ -50,12 +49,12 @@ def run(lint: Lint, argv: list[str]) -> int:
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="add the clauses the lint can write to the tags, then check",
+        help="write or drop the message after each marker's label, as the settings say, then check",
     )
     parser.add_argument(
         "--update",
         action="store_true",
-        help="record the groups as they are now in the lock, then check",
+        help="record the groups as they are now in the registry's reviewed section, then check",
     )
     parser.add_argument(
         "dir", nargs="?", default=".", metavar="<dir>", help="directory to scan (default: .)"
@@ -78,20 +77,20 @@ def _show(report: Report | Invalid, list_keys: bool) -> Done | NothingToDo:
             print(f"{key} ({len(wheres)})" + "".join("\n    " + where for where in wheres))
     changes = []
     if report.fixed:
-        changes.append(f"Fixed tags in {', '.join(report.fixed)}.")
+        changes.append(f"Fixed markers in {', '.join(report.fixed)}.")
     if report.updated:
-        changes.append(f"Updated {report.lock_file}.")
+        changes.append(f"Updated {report.registry_file}.")
     if report.problems:
         for change in changes:
             outcome.changed(change)
         raise Precondition(
-            f"{_count(len(report.problems), 'problem')} in COUPLED tags.",
+            f"{_count(len(report.problems), 'problem')} in COUPLED groups.",
             *(f"{problem.where} {problem.message}" for problem in report.problems),
         )
     if report.keys:
         summary = f"No problems in {_count(len(report.keys), 'COUPLED key')}."
     else:
-        summary = "No COUPLED tags."
+        summary = "No COUPLED markers."
     if report.unchecked:
         summary += f" Not checked, as they're other repositories: {', '.join(report.unchecked)}."
     if changes:

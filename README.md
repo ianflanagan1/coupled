@@ -1,72 +1,75 @@
 # coupled-tags-lint
 
-Checks the `COUPLED:<key>:[<relation>]` tags in a repository: that each is well formed, that the values they relate agree, and that no group has changed since it was last reviewed. The tag convention, and the Claude Code skill and hook that go with it, are in [coupled-tags](https://github.com/ianflanagan1/coupled-tags).
+Checks the COUPLED groups in a repository: values or code in several places that must change together but can't share a single source of truth. Each place carries a marker, `COUPLED:<key>: <label>`, and the repository's registry, `.coupled-tags.toml`, describes each group: how its sites relate, and the files in it that can't hold a marker. The lint checks that markers and registry agree, that the relations between values hold, and that no group has changed since it was last reviewed. It also gives Claude Code two hooks that show Claude a group before it edits one of its sites. The convention, and the Claude Code skill that goes with it, are in [coupled-tags](https://github.com/ianflanagan1/coupled-tags).
 
 ```
 $ coupled-tags-lint
-⚠️ 1 problem in COUPLED tags.
-app.py:1 Relation doesn't hold with nginx.conf:1: 12 <= 10m
+⚠️ 1 problem in COUPLED groups.
+nginx.conf:1 `nginx >= app` doesn't hold with app.py:1: 10m >= 12
 ```
 
 Runs on macOS and Linux. Built on [cli-kit](https://github.com/ianflanagan1/cli-kit).
 
+## Markers and the registry
+
+```nginx
+client_max_body_size 10m;  # COUPLED:upload-limit: nginx
+```
+```python
+MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app
+```
+```toml
+# .coupled-tags.toml
+version = 1
+
+["COUPLED:upload-limit:"]
+relations = ["nginx >= app", "nginx = ./limits.json#/upload_mb"]
+```
+
+A marker's key names its group; its label names this site within the group. A key and a label are lowercase letters and digits, in words joined by single hyphens, and the space between them is part of the form: what to search for to find a group is `COUPLED:<key>:`, which finds each of its sites and its table in the registry, as the table is named the same way. Prose goes before `COUPLED:`, or after the label and a `.`: `COUPLED:upload-limit: nginx. Larger bodies get a 413.`
+
+A marker describes the code before its comment on its line, or for a marker on a comment line, the first line of code after it, past any other comment lines but not a blank line. `COUPLED:<key>:END`, in a comment after the last line of a block, closes the nearest marker of its key above it, so that it describes every line down to the END. Blocks of different keys can nest but not overlap.
+
+Each group has a table in the registry, named `["COUPLED:<key>:"]`:
+
+- `relations`: each `<ref> <op> <ref> [<arith> <number>]`, the first ref's value by op the second's through the formula; or a bare op, `=`, `same-as` or `same-shape`, alone, when every site and file of the group is the same. A ref is a site, by its label, or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`.
+- `files`: files in a group whose relation is a bare op, which no relation names.
+- `select`: a regex for a site, by its label, picking its value out of its line when the lint can't, with the value in its one capture group: `select = { url = ':(\d+)$' }`.
+
+Ops are of two kinds, and a group uses one. Value ops, `=`, `!=`, `<`, `<=`, `>`, `>=`, compare single values, and the lint checks them. Structural ops, `same-as` (duplicated code), `same-shape` (types and schemas with the same fields), `subset-of` and `superset-of`, relate code or structure, which the lint records but doesn't compare.
+
+A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no marker. A group in two repositories names the other's files with `//`; each repository's registry describes its own side.
+
 ## What it reports
 
-- **malformed tags:** the key has uppercase letters or underscores, or isn't followed straight by `:[` or `:END`
-- **clauses:** a clause that isn't an equation, a bare op, a file or a selector, such as an old `(note)`; an op other than `=`, `same-as` or `same-shape` with no ref; a bare op beside another op in its tag; a ref written twice in a tag; a file not written `./<path>` or `//<git-host>/<owner>/<name>/<path>`; a selector inside an equation, more than one selector, or one that isn't a regex; a formula or selector with a structural op; and a formula multiplying or dividing by 0
-- **brackets:** a tag with no closing `]` before its comment ends, a blank line or the end of the file, and a `]` followed straight by `(` or `[`, which Markdown reads as a link
-- **block ends:** a `COUPLED:<key>:END` with no tag of its key above it to close, or closing a tag with a value op, a block holding another of its own key, and blocks that overlap
-- **placement:** a tag with no line of code directly after its comment, such as one with a blank line between
-- **refs:** a name no other site of the key has, or several have, saying how to pick one out with its file (`./B.php#$a`); a file holding several tags of the key named without a value's name; a JSON Pointer into a file that holds tags of the key; and a value's name into a file that holds none
-- **mirrors:** an equation between two tagged sites that isn't written at both (`= $d + 1` at `$e` needs `= $e - 1` at `$d`), and two that are written at both but don't mirror each other
-- **files:** a tag that doesn't refer to every file the other tags of its key in this repository refer to, in an equation or alone, or that marks one differently, such as `./.env` on one and `./.env?` on another; a file clause naming a file that already holds a tag of the key, which the search finds without it; and a file in this repository that isn't there, unless it's marked optional with `?`
-- **orphan keys:** the key appears only once, which usually means the other end was deleted, unless its tag refers to a file
-- **groups:** a group with no op, one that mixes value ops with structural ops, a bare op in a group that mixes ops, and a site or file nothing relates
-- **values**, in groups using value ops: a site whose value it can't read, and a relation that doesn't hold, with the values it compared. A file a tag refers to gives its one tag of the key, if it's excluded from the search, or else its value at the pointer, or its one line; a longer file with neither can't be read.
-- **the lock:** a group that differs from what the lock records (see [The lock](#the-lock))
+- **markers:** a key or label not in lowercase words joined by hyphens, a marker with no label, prose straight after a label with no `.` between, a tag in the old bracket form, and a marker with no line of code after it
+- **block ends:** an END with no marker of its key above it to close, a block holding another of its own key, blocks that overlap, and an END after a marker of a group using value ops
+- **the registry:** none when there are markers, one that isn't TOML or has no `version = 1`, a table not named `["COUPLED:<key>:"]`, a field it doesn't know, and a relation, file or selector it can't read
+- **groups:** a key with no table, a label no marker has or two markers share, a group with fewer than two sites and files, one mixing value and structural ops, a bare op beside other relations, two relations between the same sites, a site relating to itself, a formula or selector in a group of structural ops, a formula multiplying or dividing by 0, and a site or file nothing relates
+- **files:** a file in this repository that isn't there, unless it's marked optional, and one that holds a marker of the group, which should be named by its label
+- **values**, in groups using value ops: a site or file whose value it can't read, and a relation that doesn't hold, with the values it compared
+- **the reviewed section:** a group that differs from what it records (see [The reviewed section](#the-reviewed-section))
+- **the message:** a marker without the message after its label when the [settings](#settings) turn it on, or with one when they don't
 - **unreadable files:** a file holding `COUPLED:` that isn't UTF-8
 
-A tag runs from `[` to the `]` that closes it, which may be on a later line of its comment, so a tag that a formatter or editor wraps is still read whole. The opener of a line comment (`#`, `//`, `;`, `--`) and the `*` of a docblock line are left out where it runs on; in a block comment, or outside one as in Markdown, it runs on over any lines. Brackets inside it, such as `$_ENV['X']`, and a selector's regex don't close it. Text before `COUPLED:` and after the `]` isn't part of the tag, so prose goes there, and comment lines between a tag on its own line and the code it describes are skipped.
+The lint reads a site's value from the line its marker describes: the one quoted or backticked literal on it, else an image's version (`FROM node:24.22.1-alpine`), else the right-hand side of an assignment, else a directive's value (`client_max_body_size 10m;`), or what its selector picks out. A file gives its value at its pointer, or if it's one line, that line. Versions match on the parts both give, so `24` and `24.22.1` are `=`; numbers compare numerically, ignoring a unit suffix such as `m` in `10m`; anything else compares as text, by `=` and `!=` only.
 
-Between its brackets a tag holds none or more clauses, separated by `; `:
+The lint doesn't read other repositories, since which revision to compare against, and how to reach it, depend on how the two are released. It names them in its status line as not checked.
 
-- `<op> <ref> [<arith> <number>]`, an equation: this site's value, by op, the ref's through the formula
-- `=`, `same-as` or `same-shape` alone, a bare op: the same as every other site of the key
-- `./<path>[?][#<fragment>]`, a file in this repository, or `//<git-host>/<owner>/<name>/<path>[?][#<fragment>]`, one in another, that's in the group but can't hold a tag
-- `@/<regex>/`, a selector, picking this site's value out of its line
+## The reviewed section
 
-A ref is a value's name at its site (`MAX_UPLOAD_MB`), or a file. A file's fragment is a JSON Pointer (`#/engines/node`), or the name of a value at a tagged site in it (`./B.php#$a`), which picks out one site when several have the name. A name matches the site whose line declares it, by assignment or directive, before one whose line only mentions it.
+Relations between values are checked on every run, but structural ops can't be, and a group can lose a site without any relation failing. So `--update` writes, below the groups in the registry, each group as it was last reviewed:
 
-```
-COUPLED:upload-limit:[<= client_max_body_size; = ./limits.json#/upload_mb; ./.env?] nginx answers larger bodies with a 413.
-```
+- a fingerprint of its table
+- each of its sites, by its marker (`"COUPLED:upload-limit: nginx"`)
+- in a group using value ops, the unit on each value, since numbers are compared without their units
+- in a group using structural ops, a fingerprint of each site's block, and of each file in this repository the group names
 
-The lint doesn't read other repositories, since which revision to compare against, and how to reach it, depend on how the two are released. It checks that each `//` file is well formed and on every tag of its key, leaves unchecked a name no site here has when the group refers to another repository, and names the repositories in its status line. To check them against each repository's default branch, run [coupled-tags-cross-repo](https://github.com/ianflanagan1/coupled-tags-cross-repo) beside the lint.
+The lint fails when the code differs: a table changed, a site added or removed, a unit changed, or a structural block or named file edited. It names the group's other sites. Read them, change them together so the group holds, then rerun with `--update` to record it; commit the registry with the change, so its diff shows the group was touched. Values themselves aren't recorded: changing one is checked by its relations. Neither is where a site is, so moving a marked line to another file isn't a change.
 
-### Fixing
+A block's fingerprint ignores indentation, blank lines, and the markers and ENDs of blocks nested inside it, so reindenting a block or rewording a marker inside it isn't a change. Sites under an excluded path aren't recorded.
 
-`--fix` adds to the tags what the lint can write itself, then checks:
-
-- the mirror of an equation at its other site, flipping the op and undoing the formula (`< $d * 2` at `$e` gives `> $e / 2` at `$d`), naming this end as another tag already does, else by its declared name, alone or in its file, else by its file alone
-- each file the group's other tags refer to, alone, unless it's in this repository and isn't there
-
-It leaves to you what it can't decide: two equations that don't mirror each other, a ref that names no site or several (and the mirrors of a tag holding one), and values that don't hold. A tag on one line stays on it; one that ran on over several lines is wrapped again at its `; `, within its longest line. The fix doesn't touch the lock, so run `--update` once you've reviewed the group, or pass both.
-
-## The lock
-
-Relations between values are checked on every run, but structural ops (`same-as`, `same-shape`, `subset-of`, `superset-of`) can't be, and a group can lose a site without any relation failing. So the lock, `.coupled-tags.lock` at the repository's root unless the [settings file](#settings) names another file, records each group as it was last reviewed:
-
-- every site, with its relation
-- in a group using value ops, the unit on each value (`m` in `10m`), since numbers are compared without their units
-- in a group using structural ops, a fingerprint of each site's block, and of each file in this repository its tags refer to
-
-The lint fails when the code differs: a site added or removed, a relation rewritten, a unit changed, or a structural block or named file edited. It names the group's other sites. Read them, change them together so the group holds, then rerun with `--update` to record it; commit the lock with the change, so its diff shows the group was touched. Values themselves aren't recorded: changing one is checked by its relations.
-
-A block is the line the tag describes and, if a later `COUPLED:<key>:END` closes the tag, every line down to the END, whatever their indentation. A structural tag with no END describes only its line. Indentation, blank lines, and the tags and ENDs of blocks nested inside it don't count, so reindenting a block or rewording a tag inside it isn't a change.
-
-A repository with tags and no lock fails until `--update` writes one. Sites under an excluded path are kept in the lock as they were and not compared. Exclude paths in the [settings file](#settings), which every run reads, rather than with `-x`, which `--update` and the check must each be given. Other repositories aren't recorded.
-
-It does **not** look at diffs. Diff-aware enforcement in the style of Google's `LINT.IfChange` is out of scope; the lock gives the same effect from the code alone.
+It does **not** look at diffs. Diff-aware enforcement in the style of Google's `LINT.IfChange` is out of scope; the reviewed section gives the same effect from the code alone.
 
 ## Usage
 
@@ -74,28 +77,52 @@ It does **not** look at diffs. Diff-aware enforcement in the style of Google's `
 coupled-tags-lint            # check the current directory
 coupled-tags-lint -l         # also list every key and its sites
 coupled-tags-lint -x docs/   # exclude a path prefix, besides the settings file's (repeatable)
-coupled-tags-lint --fix      # add mirrored equations and missing files to the tags, then check
-coupled-tags-lint --update   # record the groups in the lock, then check
+coupled-tags-lint --fix      # write or drop the message after each label, as the settings say, then check
+coupled-tags-lint --update   # record the groups in the registry's reviewed section, then check
 ```
 
 In a git work tree it scans tracked files plus untracked files that aren't ignored. Elsewhere it uses `grep --recursive`, skipping `.git`, `node_modules` and `vendor`. It ends with one status line: `➖` and exit status 0 when clean, `⚠️` and the problems, one per line, with exit status 1 when it finds any. A usage error exits with 2.
 
 ## Settings
 
-A repository sets the paths to exclude on every run, and where its lock is, in `.config/ianf-coupled-tags.toml`, committed with its code:
+A repository sets the paths to exclude on every run, where its registry is, and whether markers carry a message, in `.config/ianf-coupled-tags.toml`, committed with its code:
 
 ```toml
 #:schema https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/ianf-coupled-tags.v1.json
 version = 1
 exclude = ["docs", "tests/fixtures"]
-lock-file = ".config/coupled-tags.lock"
+registry = ".config/coupled.toml"
+tag-message = true
 ```
 
 - `version`: the version of the file's format, which is 1.
-- `exclude`: path prefixes, relative to the directory scanned, whose tags aren't checked, such as examples and test fixtures. None by default.
-- `lock-file`: the lock file's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `.coupled-tags.lock` by default. `--update` makes its directory if it isn't there. The lint doesn't move a lock: when you change this, move the file too.
+- `exclude`: path prefixes, relative to the directory scanned, whose markers aren't checked, such as examples and test fixtures. None by default.
+- `registry`: the registry's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `.coupled-tags.toml` by default. The lint doesn't move a registry: when you change this, move the file too.
+- `tag-message`: whether each marker's label is followed by a message telling a reader who doesn't know the convention, such as an AI agent without the coupled-tags skill, what to search for and where the group is described. Off by default. `--fix` writes it, or drops it when it's off:
 
-The file is optional. The lint reads the copy on disk in the directory it scans, so a branch that adds fixtures can exclude them in the same change. A file that isn't valid TOML, has no `version` or one the lint doesn't read, holds a setting it doesn't know, or names a lock outside the repository stops the run with `⚠️` and exit status 1, before anything is changed. It's read with [repo-settings](https://github.com/ianflanagan1/repo-settings), and its schema is in `schema/`.
+  ```python
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
+  ```
+
+The file is optional. The lint reads the copy on disk in the directory it scans, so a branch that adds fixtures can exclude them in the same change. A file that isn't valid TOML, has no `version` or one the lint doesn't read, holds a setting it doesn't know, or names a registry outside the repository stops the run with `⚠️` and exit status 1, before anything is changed. It's read with [repo-settings](https://github.com/ianflanagan1/repo-settings), and its schema is in `schema/`.
+
+## The Claude Code hooks
+
+`coupled-tags-hook` is a Claude Code hook, for two events:
+
+- **the gate**, as `PreToolUse` on `Write|Edit|MultiEdit`: the first call in a session that changes a marked line, the line a marker describes, or a line of a marked block, is denied, with each touched group's sites and table as the reason. Claude reads them, changes the group together, and retries.
+- **the context hook**, as `PostToolUse` on `Read`: when Claude reads a file holding markers, the hook adds each group's sites and table to Claude's context.
+
+A group either hook shows isn't shown again in the session, so the gate rarely fires on a file Claude has read. Files the repository's settings exclude, and the registry, are left alone. Neither sees edits or reads made through Bash, which is why markers name their key in a form a search finds. If the hook fails, it tells the user and lets the call go ahead. A read of a file with no markers costs about 45 ms.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "\"$HOME/projects/cli/coupled-tags-lint/.venv/bin/coupled-tags-hook\"" }] }],
+    "PostToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command", "command": "\"$HOME/projects/cli/coupled-tags-lint/.venv/bin/coupled-tags-hook\"" }] }]
+  }
+}
+```
 
 ## Adding it to a project
 
@@ -105,7 +132,7 @@ This repository is a Nix flake that packages the lint as the `coupled-tags-lint`
 devbox add github:ianflanagan1/coupled-tags-lint/v0.2.0#coupled-tags-lint
 ```
 
-Then run `coupled-tags-lint` in the project's check, as a step of its Taskfile `check` task, so CI runs it too, and commit the lock.
+Then run `coupled-tags-lint` in the project's check, as a step of its Taskfile `check` task, so CI runs it too, and commit the registry.
 
 To move to a new release, change the tag in `devbox.json` and run `devbox update`. Without devbox, `nix run github:ianflanagan1/coupled-tags-lint` runs it once.
 
@@ -116,14 +143,16 @@ cd ~/projects/cli/coupled-tags-lint
 devbox run -- task setup   # uv sync, then link coupled-tags-lint into ~/.local/bin
 ```
 
+`task setup` also puts `coupled-tags-hook` in `.venv/bin`, where the hooks above run it from.
+
 ## Development
 
 ```sh
 devbox run -- task test    # pytest
 devbox run -- task lint    # ruff check and format
-devbox run -- task check   # lint, test, then build the flake and lint this repository's tags
+devbox run -- task check   # lint, test, then build the flake and lint this repository's markers
 ```
 
-`src/coupled_tags_lint/core/` parses tags, reads values and blocks, checks groups, works out fixes, rewrites tags and builds and compares the lock as pure functions; `orchestrators/lint.py` gathers the files holding tags, the files they refer to, the settings and the lock through its ports, and writes the fixed tags and the lock; `core/settings.py` decides what a settings file excludes and which file is the lock; `adapters/` holds git grep, the file system, the settings file and the command line; `__main__.py` wires them.
+`src/coupled_tags_lint/core/` finds markers, parses the registry and its relations, reads values and blocks, checks groups, writes the message after a label, compares groups with the reviewed section, and decides what the hooks show, as pure functions. `orchestrators/lint.py` gathers the files holding markers, the registry, the files it names and the settings through its ports, and writes the fixed markers and the reviewed section; `orchestrators/hook.py` gathers a group's sites and table for the hooks. `adapters/` holds git grep, the file system, the settings file, the session's shown groups, the command line and the hook's JSON; `__main__.py` wires them.
 
 To release, raise `version` in `pyproject.toml`, commit, then run `github release . patch|minor|major`. Projects move to it by changing their tag.

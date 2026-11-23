@@ -1,70 +1,66 @@
-import unittest
+"""Writing and dropping the message after a marker's label, as --fix does."""
 
-from coupled_tags_lint.core.rewrite import rewritten
-from coupled_tags_lint.core.tags import Tag, parse_relation
+from coupled_tags_lint.core.rewrite import message, with_messages
 
-
-def tag(relation: str) -> Tag:
-    return parse_relation("x", relation)
+REGISTRY = ".coupled-tags.toml"
+MESSAGE = message("upload-limit", REGISTRY)
 
 
-class Rewriting(unittest.TestCase):
-    def test_a_tag_on_one_line_is_rewritten_in_place(self) -> None:
-        self.assertEqual(
-            ["$d = 13;  // Checked. COUPLED:x:[= $c + 1; = $e - 1] More prose.", "$e = 14;"],
-            rewritten(
-                ["$d = 13;  // Checked. COUPLED:x:[= $c + 1] More prose.", "$e = 14;"],
-                {0: tag("= $c + 1; = $e - 1")},
-            ),
-        )
-
-    def test_an_empty_tag_is_filled(self) -> None:
-        self.assertEqual(
-            ["// COUPLED:x:[= $d - 1]", "$c = 12;"],
-            rewritten(["// COUPLED:x:[]", "$c = 12;"], {0: tag("= $d - 1")}),
-        )
-
-    def test_a_tag_that_ran_on_is_wrapped_within_its_longest_line(self) -> None:
-        self.assertEqual(
-            [
-                "// COUPLED:x:[= $d + 1; = $c + 2;",
-                "//   = ./b.json#/b + 3;",
-                "//   = ./a.json#/a + 4] Prose.",
-                "$e = 14;",
-            ],
-            rewritten(
-                ["// COUPLED:x:[= $d + 1; = $c + 2;", "//   = ./b.json#/b + 3] Prose.", "$e = 14;"],
-                {0: tag("= $d + 1; = $c + 2; = ./b.json#/b + 3; = ./a.json#/a + 4")},
-            ),
-        )
-
-    def test_a_docblock_tag_that_ran_on_keeps_its_stars(self) -> None:
-        self.assertEqual(
-            ["/**", " * COUPLED:x:[same-as;", " * ./a.txt; ./b.txt]", " */"],
-            rewritten(
-                ["/**", " * COUPLED:x:[same-as;", " * ./a.txt]", " */"],
-                {1: tag("same-as; ./a.txt; ./b.txt")},
-            ),
-        )
-
-    def test_several_tags_in_a_file_are_each_rewritten(self) -> None:
-        self.assertEqual(
-            [
-                "A = 1  # COUPLED:x:[= B]",
-                "# COUPLED:x:[= A;",
-                "#   ./c.txt;",
-                "#   ./d.txt]",
-                "B = 1",
-            ],
-            rewritten(
-                ["A = 1  # COUPLED:x:[]", "# COUPLED:x:[= A;", "#   ./c.txt]", "B = 1"],
-                {0: tag("= B"), 1: tag("= A; ./c.txt; ./d.txt")},
-            ),
-        )
-
-    def test_a_line_without_a_tag_is_left_alone(self) -> None:
-        self.assertEqual(["X = 1"], rewritten(["X = 1"], {0: tag("=")}))
+def test_the_message_names_what_to_search_for_and_where_the_group_is_described() -> None:
+    assert MESSAGE == (
+        'Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.'
+    )
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_turned_on_the_message_is_written_after_the_label() -> None:
+    lines = ["MAX = 8  # COUPLED:upload-limit: app"]
+    assert with_messages(lines, REGISTRY, True) == [f"{lines[0]}. {MESSAGE}"]
+
+
+def test_a_message_already_written_is_left_as_it_is() -> None:
+    lines = [f"MAX = 8  # COUPLED:upload-limit: app. {MESSAGE}"]
+    assert with_messages(lines, REGISTRY, True) == lines
+
+
+def test_the_message_goes_before_prose_after_the_label() -> None:
+    lines = ["# COUPLED:upload-limit: nginx. Larger bodies get a 413."]
+    assert with_messages(lines, REGISTRY, True) == [
+        f"# COUPLED:upload-limit: nginx. {MESSAGE} Larger bodies get a 413."
+    ]
+
+
+def test_the_message_goes_before_a_block_comment_s_closer() -> None:
+    lines = ["<!-- COUPLED:upload-limit: docs -->"]
+    assert with_messages(lines, REGISTRY, True) == [
+        f"<!-- COUPLED:upload-limit: docs. {MESSAGE} -->"
+    ]
+
+
+def test_a_message_naming_another_registry_is_rewritten() -> None:
+    lines = [f"MAX = 8  # COUPLED:upload-limit: app. {MESSAGE}"]
+    assert with_messages(lines, ".config/coupled.toml", True) == [
+        "MAX = 8  # COUPLED:upload-limit: app. " + message("upload-limit", ".config/coupled.toml")
+    ]
+
+
+def test_turned_off_the_message_is_dropped_and_prose_after_it_kept() -> None:
+    lines = [
+        f"MAX = 8  # COUPLED:upload-limit: app. {MESSAGE}",
+        f"# COUPLED:upload-limit: nginx. {MESSAGE} Larger bodies get a 413.",
+    ]
+    assert with_messages(lines, REGISTRY, False) == [
+        "MAX = 8  # COUPLED:upload-limit: app",
+        "# COUPLED:upload-limit: nginx. Larger bodies get a 413.",
+    ]
+
+
+def test_each_of_two_markers_on_a_line_gets_its_own_message() -> None:
+    lines = ["X = 1  # COUPLED:a: x. COUPLED:b: y"]
+    assert with_messages(lines, REGISTRY, True) == [
+        f"X = 1  # COUPLED:a: x. {message('a', REGISTRY)} COUPLED:b: y. {message('b', REGISTRY)}"
+    ]
+
+
+def test_markers_without_a_label_are_left_alone() -> None:
+    lines = ["X = 1  # COUPLED:a:"]
+    assert with_messages(lines, REGISTRY, True) == lines

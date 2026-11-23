@@ -1,12 +1,14 @@
-"""Linting a repository's COUPLED tags: read its settings; gather the tags in its files, the
-files in it that they refer to and the lock its settings name; with --fix, add the clauses the
-lint can write to the tags and gather again; with --update, record the groups in the lock; then
-check them. Files in other repositories aren't read."""
+"""Linting a repository's COUPLED groups: read its settings; gather the markers in its files, its
+registry and the files in it that the registry's groups refer to; with --fix, write or drop the
+message after each marker's label, as the settings say, and gather again; with --update, record
+the groups in the registry's reviewed section; then check them. Files in other repositories
+aren't read."""
 
 from dataclasses import dataclass
 from typing import Protocol, final
 
-from coupled_tags_lint.core import lock
+from coupled_tags_lint.core import registry as registries
+from coupled_tags_lint.core import review
 from coupled_tags_lint.core.check import (
     Content,
     FileRead,
@@ -16,15 +18,15 @@ from coupled_tags_lint.core.check import (
     check,
     file_paths,
     file_sites,
-    fixes,
     unchecked,
 )
-from coupled_tags_lint.core.rewrite import rewritten
-from coupled_tags_lint.core.settings import Invalid, Read, settings
-from coupled_tags_lint.core.tags import Tag, Unclosed
+from coupled_tags_lint.core.markers import Marker
+from coupled_tags_lint.core.registry import Registry, Unparseable
+from coupled_tags_lint.core.rewrite import with_messages
+from coupled_tags_lint.core.settings import Invalid, Read, Settings, settings
 
 
-class TagSearch(Protocol):
+class MarkerSearch(Protocol):
     def paths(self, root: str) -> list[str]:
         """The path, relative to root, of every file under root holding `COUPLED:`."""
         ...
@@ -51,28 +53,31 @@ class Report:
     problems: list[Problem]
     # Each key, in the order first found, with its sites' locations.
     keys: list[tuple[str, list[str]]]
-    # The repositories tags refer to files in, which weren't checked.
+    # The repositories groups refer to files in, which weren't checked.
     unchecked: list[str]
-    # The files --fix rewrote tags in.
+    # The files --fix rewrote markers in.
     fixed: list[str]
-    # Whether --update changed the lock.
+    # Whether --update changed the registry.
     updated: bool
-    # The lock file's path from the root, as the repository's settings give it.
-    lock_file: str
+    # The registry's path from the root, as the repository's settings give it.
+    registry_file: str
 
 
 @final
 @dataclass(frozen=True)
 class _Gathered:
     sites: list[Site]
+    registry: Registry | Unparseable | None
+    # The registry's text, or None if there's none.
+    registry_text: str | None
     files: dict[str, FileRead]
-    # A problem for each file holding tags that couldn't be read.
+    # A problem for each file holding markers that couldn't be read.
     unreadable: list[Problem]
 
 
 @final
 class Lint:
-    def __init__(self, search: TagSearch, files: Files, settings: SettingsFile) -> None:
+    def __init__(self, search: MarkerSearch, files: Files, settings: SettingsFile) -> None:
         self._search = search
         self._files = files
         self._settings = settings
@@ -84,63 +89,75 @@ class Lint:
         if isinstance(found, Invalid):
             return found
         excludes = found.excludes + excludes
-        gathered = self._gather(root, excludes)
+        gathered = self._gather(root, excludes, found)
         fixed: list[str] = []
         if fix:
-            fixed = self._fix(root, gathered)
+            fixed = self._fix(root, gathered, found)
             if fixed:
-                gathered = self._gather(root, excludes)
+                gathered = self._gather(root, excludes, found)
         sites = gathered.sites
+        registry = gathered.registry
 
-        now = lock.current(sites, gathered.files)
-        lock_path = root + "/" + found.lock
-        text = self._files.read(lock_path)
-        old = None if text is None else lock.parse(text)
         updated = False
-        if update:
-            new = lock.updated(old, now, excludes)
-            new_text = lock.render(new)
-            if new_text != text and (new or text is not None):
-                self._files.write(lock_path, new_text)
-                updated = True
-            old = new
-
-        problems = (
-            gathered.unreadable
-            + check(sites, gathered.files)
-            + lock.compare(old, now, excludes, found.lock, lock.UPDATE)
+        problems = gathered.unreadable + check(
+            sites, registry, gathered.files, found.registry, found.messages
         )
+        if isinstance(registry, Registry):
+            now = review.current(sites, registry, gathered.files)
+            old = registry.reviewed
+            if update and gathered.registry_text is not None:
+                new = review.reviewed(now)
+                text = registries.with_reviewed(gathered.registry_text, new)
+                if text != gathered.registry_text:
+                    self._files.write(root + "/" + found.registry, text)
+                    updated = True
+                old = new
+            problems += review.compare(old, now, found.registry)
         keys: dict[str, list[str]] = {}
         for site in sites:
-            if isinstance(site.found, Tag | Unclosed):
+            if isinstance(site.found, Marker):
                 keys.setdefault(site.found.key, []).append(site.where)
-        return Report(problems, list(keys.items()), unchecked(sites), fixed, updated, found.lock)
+        return Report(
+            problems, list(keys.items()), unchecked(registry), fixed, updated, found.registry
+        )
 
-    def _gather(self, root: str, excludes: list[str]) -> _Gathered:
-        paths = [path for path in self._search.paths(root) if not lock.excluded(path, excludes)]
+    def _gather(self, root: str, excludes: list[str], found: Settings) -> _Gathered:
+        paths = [
+            path
+            for path in self._search.paths(root)
+            if not review.excluded(path, excludes) and path != found.registry
+        ]
         sites: list[Site] = []
         unreadable: list[Problem] = []
         for path in paths:
             text = self._files.read(root + "/" + path)
             if text is None:
-                unreadable.append(Problem(path, "Can't read this file as UTF-8 to check its tags"))
+                unreadable.append(
+                    Problem(path, "Can't read this file as UTF-8 to check its markers")
+                )
                 continue
             sites += file_sites(path, text.splitlines())
-        tags = [site.found for site in sites if isinstance(site.found, Tag)]
-        files = {path: self._read(root, path) for path in file_paths(tags)}
-        return _Gathered(sites, files, unreadable)
+        registry_text = self._files.read(root + "/" + found.registry)
+        registry = None if registry_text is None else registries.parse(registry_text)
+        files: dict[str, FileRead] = {}
+        if isinstance(registry, Registry):
+            files = {path: self._read(root, path) for path in file_paths(registry)}
+        return _Gathered(sites, registry, registry_text, files, unreadable)
 
-    def _fix(self, root: str, gathered: _Gathered) -> list[str]:
-        """Rewrites the tags fixes gives, returning the paths of the files changed."""
-        by_path: dict[str, dict[int, Tag]] = {}
-        for item in fixes(gathered.sites, gathered.files):
-            by_path.setdefault(item.path, {})[item.line] = item.tag
+    def _fix(self, root: str, gathered: _Gathered, found: Settings) -> list[str]:
+        """Writes or drops the message after each marker's label, returning the paths of the
+        files changed."""
+        paths: list[str] = []
+        for site in gathered.sites:
+            path = site.where.rsplit(":", 1)[0]
+            if isinstance(site.found, Marker) and path not in paths:
+                paths.append(path)
         changed: list[str] = []
-        for path, tags in by_path.items():
+        for path in paths:
             text = self._files.read(root + "/" + path)
             if text is None:
                 continue
-            lines = rewritten(text.splitlines(), tags)
+            lines = with_messages(text.splitlines(), found.registry, found.messages)
             new_text = "\n".join(lines) + ("\n" if text.endswith("\n") else "")
             if new_text != text:
                 self._files.write(root + "/" + path, new_text)

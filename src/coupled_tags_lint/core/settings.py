@@ -1,22 +1,24 @@
 """A repository's settings for its COUPLED tags, committed as .config/ianf-coupled-tags.toml:
 
-    version = 1                     # the version of the file's format: see schema/
-    exclude = ["README.md", "tests"]  # path prefixes whose tags aren't checked; none by default
-    lock-file = ".config/coupled-tags.lock"  # the lock file; .coupled-tags.lock by default
+    version = 1                        # the version of the file's format: see schema/
+    exclude = ["README.md", "tests"]   # path prefixes whose markers aren't checked; none by default
+    registry = ".config/coupled.toml"  # the registry; .coupled-tags.toml by default
+    tag-message = true                 # write a message after each marker's label; off by default
 
 A repository needn't have the file. The paths it excludes are skipped on every run, so the check
-and --update can't disagree about them, nor about which file is the lock.
+and --update can't disagree about them, nor about which file is the registry.
 """
 
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import assert_never, final
 
-from coupled_tags_lint.core.lock import LOCK_FILE
-
 PURPOSE = "coupled-tags"
 
-_KNOWN = ("exclude", "lock-file")
+# The registry's path from the repository's root, unless the settings name another.
+REGISTRY_FILE = ".coupled-tags.toml"
+
+_KNOWN = ("exclude", "registry", "tag-message")
 
 
 class Version(IntEnum):
@@ -50,15 +52,22 @@ class Invalid:
 class Settings:
     # The path prefixes whose tags aren't checked, without a trailing slash.
     excludes: list[str]
-    # The lock file's path from the repository's root.
-    lock: str
+    # The registry's path from the repository's root.
+    registry: str
+    # Whether each marker's label is followed by a message saying where its group is described.
+    messages: bool
+
+
+def defaults() -> Settings:
+    """The settings of a repository with no settings file."""
+    return Settings([], REGISTRY_FILE, False)
 
 
 def settings(read: Read | Invalid | None) -> Settings | Invalid:
     """The settings a repository's file gives, read being None when it has no file."""
     match read:
         case None:
-            return Settings([], LOCK_FILE)
+            return defaults()
         case Invalid():
             return read
         case Read():
@@ -82,12 +91,13 @@ def _v1(table: dict[str, object], where: str) -> Settings | Invalid:
         if not isinstance(path, str) or not path:
             return Invalid(f"exclude in {where} must be a list of paths.", ())
         excludes.append(path.rstrip("/"))
-    lock = table.get("lock-file", LOCK_FILE)
-    if not isinstance(lock, str) or not _inside(lock):
-        return Invalid(
-            f"lock-file in {where} must be the path of a file inside the repository.", ()
-        )
-    return Settings(excludes, lock)
+    registry = table.get("registry", REGISTRY_FILE)
+    if not isinstance(registry, str) or not _inside(registry):
+        return Invalid(f"registry in {where} must be the path of a file inside the repository.", ())
+    messages = table.get("tag-message", False)
+    if not isinstance(messages, bool):
+        return Invalid(f"tag-message in {where} must be true or false.", ())
+    return Settings(excludes, registry, messages)
 
 
 def _inside(path: str) -> bool:

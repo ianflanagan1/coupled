@@ -1,10 +1,10 @@
-"""Behaviour of the coupled-tags-lint command, run as a program. The rules for tags and values
-are tested in test_tags.py, test_values.py and test_check.py.
+"""Behaviour of the coupled-tags-lint command, run as a program. The rules for markers, the
+registry and values are tested in test_markers.py, test_registry.py, test_values.py and
+test_check.py.
 
 Each test writes its files into a fresh directory that isn't a git work tree, so the lint falls
-back to grep. A test that checks relations
-or reads the clean status line records the lock first, with --update, so the lock's own problems
-don't join in.
+back to grep. A test that reads the clean status line records the groups as reviewed first, with
+--update, so the reviewed section's own problems don't join in.
 """
 
 import os
@@ -50,8 +50,12 @@ class Sandbox:
     def lint(self, *options: str) -> Ran:
         return self.run(*options, str(self.repo))
 
-    def lock(self) -> None:
-        """Records the groups as they are now in the lock."""
+    def registry(self, *lines: str) -> None:
+        """Writes the registry, its version and then the lines."""
+        self.file(".coupled-tags.toml", "version = 1", *lines)
+
+    def review(self) -> None:
+        """Records the groups as they are now in the registry's reviewed section."""
         self.lint("--update")
 
     def git_init(self) -> None:
@@ -79,82 +83,96 @@ def assert_problem(ran: Ran, text: str) -> None:
 
 # --- Repositories
 
+UPLOAD = ('["COUPLED:upload-limit:"]', 'relations = ["nginx >= app"]')
+MESSAGE = 'Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.'
+
+
+def upload(sandbox: Sandbox, app_limit: int) -> None:
+    sandbox.file("app.py", f"MAX_UPLOAD_MB = {app_limit}  # COUPLED:upload-limit: app")
+    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: nginx")
+    sandbox.registry(*UPLOAD)
+
 
 def test_a_group_whose_values_agree_across_files_is_clean(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-size-limit:[<= client_max_body_size]"
-    )
-    sandbox.file(
-        "nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-size-limit:[>= MAX_UPLOAD_MB]"
-    )
-    sandbox.lock()
+    upload(sandbox, 8)
+    sandbox.review()
     ran = sandbox.lint()
     assert_clean(ran)
     assert ran.output == "➖ No problems in 1 COUPLED key.\n"
 
 
 def test_a_relation_that_fails_is_reported_at_its_site(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "app.py", "MAX_UPLOAD_MB = 12  # COUPLED:upload-size-limit:[<= client_max_body_size]"
+    upload(sandbox, 12)
+    sandbox.review()
+    assert_problem(
+        sandbox.lint(), "nginx.conf:1 `nginx >= app` doesn't hold with app.py:1: 10m >= 12"
     )
-    sandbox.file(
-        "nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-size-limit:[>= MAX_UPLOAD_MB]"
-    )
-    assert_problem(sandbox.lint(), "app.py:1 Relation doesn't hold with nginx.conf:1: 12 <= 10m")
 
 
 def test_problems_are_counted_in_the_status_line_before_them(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("b.py", "Y = 1  # COUPLED:y-limit:[=]")
-    sandbox.lock()
+    upload(sandbox, 12)
     ran = sandbox.lint()
     assert ran.status == 1
-    assert ran.errors.splitlines()[0] == "⚠️ 2 problems in COUPLED tags."
+    assert ran.errors.splitlines()[0] == "⚠️ 2 problems in COUPLED groups."
 
 
-def test_a_tag_on_a_comment_line_is_checked_against_the_line_below(sandbox: Sandbox) -> None:
-    sandbox.file("Dockerfile", "# COUPLED:node-version:[=]", "FROM node:24.1-slim")
-    sandbox.file("compose.yaml", "image: node:22.3-alpine  # COUPLED:node-version:[=]")
-    assert_problem(
-        sandbox.lint(), "compose.yaml:1 Relation doesn't hold with Dockerfile:1: 22.3 = 24.1"
-    )
+def test_a_marker_on_a_comment_line_is_checked_against_the_line_below(sandbox: Sandbox) -> None:
+    sandbox.file("Dockerfile", "# COUPLED:node-version: docker", "FROM node:24.1-slim")
+    sandbox.file("compose.yaml", "image: node:22.3-alpine  # COUPLED:node-version: compose")
+    sandbox.registry('["COUPLED:node-version:"]', 'relations = ["="]')
+    assert_problem(sandbox.lint(), "compose.yaml:1 `=` doesn't hold with Dockerfile:1: 22.3 = 24.1")
+
+
+def test_a_search_for_the_key_finds_the_group_s_table_beside_its_sites(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    found = subprocess.run(
+        ["grep", "-r", "-l", "COUPLED:upload-limit:", "."],
+        cwd=sandbox.repo,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert sorted(found) == ["./.coupled-tags.toml", "./app.py", "./nginx.conf"]
+
+
+def test_markers_with_no_registry_are_reported(sandbox: Sandbox) -> None:
+    sandbox.file("app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app")
+    assert_problem(sandbox.lint(), ".coupled-tags.toml There's no registry.")
 
 
 def test_in_a_git_work_tree_ignored_files_are_skipped(sandbox: Sandbox) -> None:
     sandbox.git_init()
     sandbox.file(".gitignore", "build/")
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
-    sandbox.file("build/b.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("build/c.py", "Y = 1  # COUPLED:y-limit:[=]")
-    sandbox.lock()
+    upload(sandbox, 8)
+    sandbox.file("build/b.py", "X = 1  # COUPLED:other-limit: b")
+    sandbox.review()
     assert_clean(sandbox.lint())
 
 
 def test_a_directory_given_by_a_relative_path_is_scanned(sandbox: Sandbox) -> None:
     sandbox.git_init()
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    assert_problem(sandbox.run("repo", cwd=sandbox.root), "a.py:1 Orphan key")
+    sandbox.file("a.py", "X = 1  # COUPLED:x-limit: a")
+    assert_problem(sandbox.run("repo", cwd=sandbox.root), "There's no registry")
 
 
 def test_an_excluded_path_is_skipped(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
-    sandbox.file("docs/b.py", "X = 2  # COUPLED:x-limit:[=]")
+    upload(sandbox, 8)
+    sandbox.file("docs/b.py", "X = 2  # COUPLED:upload-limit: app")
     sandbox.lint("--update", "-x", "docs/")
     assert_clean(sandbox.lint("-x", "docs/"))
 
 
 def test_a_path_the_settings_file_excludes_is_skipped(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
-    sandbox.file("docs/b.py", "X = 2  # COUPLED:x-limit:[=]")
+    upload(sandbox, 8)
+    sandbox.file("docs/b.py", "X = 2  # COUPLED:upload-limit: app")
     sandbox.file(SETTINGS, "version = 1", 'exclude = ["docs/"]')
-    sandbox.lock()
+    sandbox.review()
     assert_clean(sandbox.lint())
 
 
 def test_an_excluded_path_adds_to_the_settings_file_s(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
-    sandbox.file("docs/b.py", "X = 2  # COUPLED:x-limit:[=]")
-    sandbox.file("build/c.py", "X = 3  # COUPLED:x-limit:[=]")
+    upload(sandbox, 8)
+    sandbox.file("docs/b.py", "X = 2  # COUPLED:upload-limit: app")
+    sandbox.file("build/c.py", "X = 3  # COUPLED:upload-limit: app")
     sandbox.file(SETTINGS, "version = 1", 'exclude = ["docs"]')
     sandbox.lint("--update", "-x", "build")
     assert_clean(sandbox.lint("-x", "build"))
@@ -163,12 +181,13 @@ def test_an_excluded_path_adds_to_the_settings_file_s(sandbox: Sandbox) -> None:
 def test_a_settings_file_with_no_version_is_reported_and_nothing_is_changed(
     sandbox: Sandbox,
 ) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
+    upload(sandbox, 8)
     sandbox.file(SETTINGS, 'exclude = ["docs"]')
+    before = (sandbox.repo / ".coupled-tags.toml").read_text()
     ran = sandbox.lint("--update")
     assert ran.status == 1
     assert ran.errors.startswith("⚠️ No version in ")
-    assert not (sandbox.repo / ".coupled-tags.lock").exists()
+    assert (sandbox.repo / ".coupled-tags.toml").read_text() == before
 
 
 def test_a_setting_the_lint_does_not_know_is_reported(sandbox: Sandbox) -> None:
@@ -176,245 +195,155 @@ def test_a_setting_the_lint_does_not_know_is_reported(sandbox: Sandbox) -> None:
     assert_problem(sandbox.lint(), "ianf-coupled-tags.toml: skip.")
 
 
-def test_list_prints_every_key_and_its_sites(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("b.py", "X = 1  # COUPLED:x-limit:[=]")
-    ran = sandbox.lint("-l")
-    assert "x-limit (2)" in ran.output
-    assert "    a.py:1" in ran.output
-
-
-# --- Tags across lines
-
-
-def test_a_tag_running_on_over_its_comment_lines_is_checked(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "Dockerfile",
-        "# The image the app is built on.",
-        "# COUPLED:node-version:[=; ./.nvmrc;",
-        "# ./package.json#/engines/node] Pinned for the build.",
-        "# Slim keeps the image small.",
-        "FROM node:24.22.1-slim",
-    )
-    sandbox.file(".nvmrc", "24.22.1")
-    sandbox.file("package.json", '{"engines": {"node": "22"}}')
-    sandbox.lock()
-    assert_problem(
-        sandbox.lint(), "./package.json#/engines/node Relation doesn't hold with Dockerfile:2"
-    )
-
-
-def test_a_trailing_tag_running_on_over_comment_lines_is_checked(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "app.py",
-        "MAX_UPLOAD_MB = 8  # COUPLED:upload-size-limit:[<=",
-        "#   ./limits.json#/upload_limit_mb]",
-        "TIMEOUT = 5",
-    )
-    sandbox.file("limits.json", '{"upload_limit_mb": 6}')
-    sandbox.lock()
-    assert_problem(
-        sandbox.lint(), "app.py:1 Relation doesn't hold with ./limits.json#/upload_limit_mb"
-    )
-
-
-def test_a_tag_whose_comment_ends_before_its_bracket_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "# COUPLED:x-limit:[= Y", "X = 1")
-    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
-    assert_problem(sandbox.lint(), "a.py:1 Close the tag with ] before the end of its comment")
-
-
-def test_a_tag_with_a_blank_line_before_its_code_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "# COUPLED:x-limit:[=]", "", "X = 1")
-    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
-    assert_problem(
-        sandbox.lint(), "a.py:1 Put the line this tag describes directly after its comment"
-    )
-
-
-def test_a_tagged_file_that_is_not_utf8_is_reported(sandbox: Sandbox) -> None:
-    (sandbox.repo / "a.txt").write_bytes(b"caf\xe9  # COUPLED:x-limit:[=]\n")
-    assert_problem(sandbox.lint(), "a.txt Can't read this file as UTF-8")
-
-
-# --- Files the tags refer to
-
-
-def test_a_one_line_file_a_tag_refers_to_is_checked(sandbox: Sandbox) -> None:
-    sandbox.file("Dockerfile", "FROM node:24.22.1-alpine  # COUPLED:node-version:[=; ./.nvmrc]")
-    sandbox.file(".nvmrc", "22")
-    assert_problem(sandbox.lint(), "./.nvmrc Relation doesn't hold with Dockerfile:1: 22 = 24.22.1")
-
-
-def test_a_pointer_into_json_a_tag_refers_to_is_checked(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "Dockerfile",
-        "FROM node:24.22.1-alpine  # COUPLED:node-version:[= ./package.json#/engines/node]",
-    )
-    sandbox.file("package.json", '{"engines": {"node": "24"}}')
-    sandbox.lock()
+def test_the_registry_is_the_file_the_settings_file_names(sandbox: Sandbox) -> None:
+    sandbox.file("app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app")
+    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: nginx")
+    sandbox.file(".config/coupled.toml", "version = 1", *UPLOAD)
+    sandbox.file(SETTINGS, "version = 1", 'registry = ".config/coupled.toml"')
+    sandbox.review()
     assert_clean(sandbox.lint())
+    assert "[reviewed." in (sandbox.repo / ".config/coupled.toml").read_text()
 
 
-def test_a_pointer_to_a_file_that_is_missing_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "Dockerfile",
-        "FROM node:24.22.1-alpine  # COUPLED:node-version:[= ./package.json#/engines/node]",
-    )
-    assert_problem(
-        sandbox.lint(),
-        "./package.json#/engines/node A tag of COUPLED:node-version: refers to this file, "
-        "but it isn't there",
-    )
-
-
-def test_a_file_without_a_pointer_that_is_missing_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; ./.nvmrc]")
-    sandbox.lock()
-    assert_problem(sandbox.lint(), "./.nvmrc A tag of COUPLED:x-limit: refers to this file")
-
-
-def test_an_optional_file_that_is_missing_is_skipped(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; ./.env?]")
-    sandbox.lock()
-    assert_clean(sandbox.lint())
-
-
-def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "a.go",
-        'const CacheIgnore = "/cache/"'
-        " // COUPLED:tool-cache-dir:[=; //github.com/me/code-rulebook/rules/caches.yaml]",
-    )
-    sandbox.lock()
-    ran = sandbox.lint()
-    assert_clean(ran)
-    assert ran.output == (
-        "➖ No problems in 1 COUPLED key. Not checked, as they're other repositories: "
-        "github.com/me/code-rulebook.\n"
-    )
-
-
-# --- Fixing tags
-
-
-def test_fix_writes_each_equation_at_both_its_sites_and_every_file_on_every_tag(
-    sandbox: Sandbox,
-) -> None:
-    sandbox.file("a.json", '{"key_a": 10}')
-    sandbox.file("b.json", '{"key_b": 11}')
-    sandbox.file("c.php", "<?php", "// COUPLED:example:[]", "$c = 12;")
-    sandbox.file("d.php", "<?php", "// COUPLED:example:[= $c + 1]", "$d = 13;")
-    sandbox.file(
-        "e.php",
-        "<?php",
-        "// COUPLED:example:[= $d + 1; = $c + 2; = ./b.json#/key_b + 3;",
-        "//   = ./a.json#/key_a + 4]",
-        "$e = 14;",
-    )
-    sandbox.lock()
-    assert_problem(sandbox.lint(), "d.php:2 Add `= $e - 1` to this tag")
-    ran = sandbox.lint("--fix", "--update")
-    assert_clean(ran)
-    assert ran.output.startswith("✅ Fixed tags in c.php, d.php. Updated .coupled-tags.lock.")
-    assert (sandbox.repo / "c.php").read_text().splitlines()[1] == (
-        "// COUPLED:example:[= $d - 1; = $e - 2; ./b.json#/key_b; ./a.json#/key_a]"
-    )
-    assert (sandbox.repo / "d.php").read_text().splitlines()[1] == (
-        "// COUPLED:example:[= $c + 1; = $e - 1; ./b.json#/key_b; ./a.json#/key_a]"
-    )
-
-
-def test_fix_leaves_what_it_cannot_write_to_be_reported(sandbox: Sandbox) -> None:
-    sandbox.file("a.php", "// COUPLED:x:[= $c - 2]", "$a = 1;")
-    sandbox.file("b.php", "// COUPLED:x:[= $c - 1]", "$a = 2;")
-    sandbox.file("c.php", "// COUPLED:x:[= $a + 1]", "$c = 3;")
-    sandbox.lock()
-    ran = sandbox.lint("--fix")
-    assert_problem(ran, "c.php:1 `$a` names several sites: ")
-    assert (sandbox.repo / "c.php").read_text() == "// COUPLED:x:[= $a + 1]\n$c = 3;\n"
-
-
-# --- The lock
-
-
-def test_update_records_the_groups_in_the_lock(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
-    ran = sandbox.lint("--update")
-    assert_clean(ran)
-    assert ran.output == "✅ Updated .coupled-tags.lock.\nNo problems in 1 COUPLED key.\n"
-    assert '"path": "a.py", "relation": "="' in (sandbox.repo / ".coupled-tags.lock").read_text()
-    assert sandbox.lint().output == "➖ No problems in 1 COUPLED key.\n"
-
-
-def test_update_records_the_lock_even_when_relations_fail(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("b.py", "Y = 2  # COUPLED:x-limit:[=]")
-    ran = sandbox.lint("--update")
-    assert ran.status == 1
-    assert "🛑 Stopped." in ran.errors
-    assert "Updated .coupled-tags.lock." in ran.errors
-    assert "Relation doesn't hold" in ran.errors
-    assert (sandbox.repo / ".coupled-tags.lock").exists()
-
-
-def test_a_repository_with_tags_and_no_lock_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
-    assert_problem(sandbox.lint(), ".coupled-tags.lock There's no lock.")
-
-
-def test_the_lock_is_the_file_the_settings_file_names(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
-    sandbox.file(SETTINGS, "version = 1", 'lock-file = ".config/tags.lock"')
-    assert_problem(sandbox.lint(), ".config/tags.lock There's no lock.")
-    ran = sandbox.lint("--update")
-    assert ran.output == "✅ Updated .config/tags.lock.\nNo problems in 1 COUPLED key.\n"
-    assert '"path": "a.py", "relation": "="' in (sandbox.repo / ".config/tags.lock").read_text()
-    assert not (sandbox.repo / ".coupled-tags.lock").exists()
-    assert sandbox.lint().output == "➖ No problems in 1 COUPLED key.\n"
-
-
-def test_a_lock_in_a_directory_that_is_not_there_yet_is_written(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
-    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
-    sandbox.file(SETTINGS, "version = 1", 'lock-file = "locks/coupled/tags.lock"')
-    assert_clean(sandbox.lint("--update"))
-    assert (sandbox.repo / "locks/coupled/tags.lock").exists()
-
-
-def test_a_lock_outside_the_repository_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file(SETTINGS, "version = 1", 'lock-file = "../tags.lock"')
+def test_a_registry_outside_the_repository_is_reported(sandbox: Sandbox) -> None:
+    sandbox.file(SETTINGS, "version = 1", 'registry = "../coupled.toml"')
     assert_problem(sandbox.lint(), "must be the path of a file inside the repository")
 
 
-def test_an_edited_structural_block_fails_until_the_lock_is_updated(sandbox: Sandbox) -> None:
-    end = "# COUPLED:vat:END"
-    sandbox.file("a.py", "# COUPLED:vat:[same-as]", "def vat(net):", "    return net / 5", end)
-    sandbox.file("b.py", "# COUPLED:vat:[same-as]", "def vat(net):", "    return net / 5", end)
-    sandbox.lock()
-    sandbox.file("b.py", "# COUPLED:vat:[same-as]", "def vat(net):", "    return net / 6", end)
-    assert_problem(sandbox.lint(), "b.py:1 It has changed since .coupled-tags.lock")
-    sandbox.lock()
+def test_list_prints_every_key_and_its_sites(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    ran = sandbox.lint("-l")
+    assert "upload-limit (2)" in ran.output
+    assert "    app.py:1" in ran.output
+
+
+def test_a_marked_file_that_is_not_utf8_is_reported(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    (sandbox.repo / "latin.txt").write_bytes(b"caf\xe9  # COUPLED:upload-limit: x\n")
+    assert_problem(sandbox.lint(), "latin.txt Can't read this file as UTF-8")
+
+
+# --- Files that can't hold a marker
+
+
+def test_a_pointer_into_json_is_checked(sandbox: Sandbox) -> None:
+    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: nginx")
+    sandbox.file("limits.json", '{"upload_mb": 12}')
+    sandbox.registry(
+        '["COUPLED:upload-limit:"]', 'relations = ["nginx >= ./limits.json#/upload_mb"]'
+    )
+    assert_problem(sandbox.lint(), "doesn't hold with ./limits.json#/upload_mb: 10m >= 12")
+
+
+def test_a_group_of_two_files_that_cannot_hold_markers_is_checked(sandbox: Sandbox) -> None:
+    sandbox.file(".nvmrc", "24")
+    sandbox.file(".tool-version", "22")
+    sandbox.registry('["COUPLED:node-version:"]', 'relations = ["./.nvmrc = ./.tool-version"]')
+    assert_problem(sandbox.lint(), "./.nvmrc `./.nvmrc = ./.tool-version` doesn't hold")
+
+
+def test_a_missing_file_is_reported_unless_it_is_optional(sandbox: Sandbox) -> None:
+    sandbox.file("a.py", "X = 1  # COUPLED:x: a")
+    sandbox.registry('["COUPLED:x:"]', 'relations = ["="]', 'files = ["./.nvmrc", "./.env?"]')
+    ran = sandbox.lint()
+    assert_problem(ran, "./.nvmrc COUPLED:x: names this file, but it isn't there")
+    assert "./.env" not in ran.errors
+
+
+def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
+    sandbox.file("a.go", "type listing struct {  // COUPLED:listing-shape: go")
+    sandbox.registry(
+        '["COUPLED:listing-shape:"]',
+        'relations = ["go same-shape //github.com/me/rulebook/schema/coverage.json"]',
+    )
+    sandbox.review()
+    ran = sandbox.lint()
+    assert_clean(ran)
+    assert "Not checked, as they're other repositories: github.com/me/rulebook." in ran.output
+
+
+# --- The tag message
+
+
+def test_fix_writes_the_message_when_the_settings_turn_it_on(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    sandbox.file(SETTINGS, "version = 1", "tag-message = true")
+    assert_problem(sandbox.lint(), "--fix writes it")
+    sandbox.lint("--fix", "--update")
+    assert (sandbox.repo / "app.py").read_text() == (
+        f"MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. {MESSAGE}\n"
+    )
     assert_clean(sandbox.lint())
 
 
-def test_an_end_after_a_value_op_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]", "# COUPLED:x-limit:END")
-    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
-    assert_problem(sandbox.lint(), "a.py:2 Drop this END")
+def test_fix_drops_the_message_when_the_settings_turn_it_off(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    sandbox.file("app.py", f"MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. {MESSAGE}")
+    assert_problem(sandbox.lint(), "--fix drops it")
+    sandbox.lint("--fix", "--update")
+    assert (
+        sandbox.repo / "app.py"
+    ).read_text() == "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app\n"
+
+
+# --- The reviewed section
+
+
+def test_update_records_the_groups_in_the_registry(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    ran = sandbox.lint("--update")
+    assert_clean(ran)
+    text = (sandbox.repo / ".coupled-tags.toml").read_text()
+    assert '[reviewed."COUPLED:upload-limit:"]' in text
+    assert '"COUPLED:upload-limit: nginx" = { unit = "m" }' in text
+    assert "Updated .coupled-tags.toml." in ran.output
+
+
+def test_update_records_the_groups_even_when_relations_fail(sandbox: Sandbox) -> None:
+    upload(sandbox, 12)
+    ran = sandbox.lint("--update")
+    assert "Updated .coupled-tags.toml." in ran.errors
+    assert "hasn't been reviewed" not in ran.errors
+
+
+def test_a_group_that_was_never_reviewed_is_reported(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    assert_problem(sandbox.lint(), "COUPLED:upload-limit: hasn't been reviewed")
+
+
+def test_an_edited_structural_block_fails_until_it_is_reviewed(sandbox: Sandbox) -> None:
+    sandbox.file(
+        "a.py", "# COUPLED:vat: invoice", "def vat(n):", "    return n / 5", "# COUPLED:vat:END"
+    )
+    sandbox.file(
+        "b.py", "# COUPLED:vat: cart", "def vat(n):", "    return n / 5", "# COUPLED:vat:END"
+    )
+    sandbox.registry('["COUPLED:vat:"]', 'relations = ["same-as"]')
+    sandbox.review()
+    sandbox.file(
+        "a.py", "# COUPLED:vat: invoice", "def vat(n):", "    return n / 6", "# COUPLED:vat:END"
+    )
+    assert_problem(sandbox.lint(), "a.py:1 It has changed since it was last reviewed")
+    sandbox.review()
+    assert_clean(sandbox.lint())
+
+
+def test_an_end_after_a_marker_of_a_value_group_is_reported(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    sandbox.file(
+        "app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app", "# COUPLED:upload-limit:END"
+    )
+    assert_problem(sandbox.lint(), "app.py:1 Drop the END")
 
 
 # --- Exit status
 
 
-def test_a_directory_with_no_tags_exits_zero(sandbox: Sandbox) -> None:
+def test_a_directory_with_no_markers_exits_zero(sandbox: Sandbox) -> None:
     sandbox.file("a.py", "X = 1")
     ran = sandbox.lint()
     assert_clean(ran)
-    assert ran.output == "➖ No COUPLED tags.\n"
+    assert ran.output == "➖ No COUPLED markers.\n"
 
 
 def test_help_describes_the_options(sandbox: Sandbox) -> None:
