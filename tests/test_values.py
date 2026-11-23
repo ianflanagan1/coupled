@@ -1,6 +1,7 @@
 import unittest
 from decimal import Decimal
 
+from coupled_tags_lint.core.comments import syntax_of
 from coupled_tags_lint.core.markers import find_markers
 from coupled_tags_lint.core.relations import Arith, Formula, ValueOp
 from coupled_tags_lint.core.values import (
@@ -19,26 +20,34 @@ from coupled_tags_lint.core.values import (
     value_line,
 )
 
+PYTHON = syntax_of("a.py")
 
-def block(*lines: str) -> list[str]:
-    """The block of the first marker in lines."""
+
+def block(path: str, *lines: str) -> list[str]:
+    """The block of the first marker in lines, of the file at path."""
     placed = find_markers(list(lines))
-    return block_lines(list(lines), placed[0], placed)
+    return block_lines(list(lines), placed[0], placed, syntax_of(path))
 
 
 class ValueLines(unittest.TestCase):
     def test_a_trailing_marker_describes_the_code_before_its_comment(self) -> None:
-        for line, code in (
-            ("MAX_UPLOAD_MB = 8  # COUPLED:x: a", "MAX_UPLOAD_MB = 8"),
-            ("client_max_body_size 10m;  # COUPLED:x: a", "client_max_body_size 10m;"),
-            ("mapId: 'a#b',  // COUPLED:x: a", "mapId: 'a#b',"),
+        for path, line, code in (
+            ("app.py", "MAX_UPLOAD_MB = 8  # COUPLED:x: a", "MAX_UPLOAD_MB = 8"),
             (
+                "nginx.conf",
+                "client_max_body_size 10m;  # COUPLED:x: a",
+                "client_max_body_size 10m;",
+            ),
+            ("map.js", "mapId: 'a#b',  // COUPLED:x: a", "mapId: 'a#b',"),
+            (
+                "php.ini",
                 "xdebug.output_dir = /tmp/profiles  ; COUPLED:x: a",
                 "xdebug.output_dir = /tmp/profiles",
             ),
-            ("- Map ID: `dog-cafe-map`. COUPLED:x: a", "- Map ID: `dog-cafe-map`."),
+            ("README.md", "- Map ID: `dog-cafe-map`. COUPLED:x: a", "- Map ID: `dog-cafe-map`."),
+            ("Dockerfile", "RUN npm ci --omit=dev  # COUPLED:x: a", "RUN npm ci --omit=dev"),
         ):
-            self.assertEqual(code, value_line([line], 0), line)
+            self.assertEqual(code, value_line([line], 0, syntax_of(path)), line)
 
     def test_a_marker_on_a_comment_line_describes_the_next_line_of_code(self) -> None:
         lines = [
@@ -47,28 +56,32 @@ class ValueLines(unittest.TestCase):
             "# Another comment.",
             "FROM node:24-slim  # pinned",
         ]
-        self.assertEqual("FROM node:24-slim", value_line(lines, 0))
+        self.assertEqual("FROM node:24-slim", value_line(lines, 0, syntax_of("Dockerfile")))
 
     def test_a_marker_with_a_blank_line_before_its_code_describes_nothing(self) -> None:
-        self.assertIsNone(value_line(["# COUPLED:x: a", "", "X = 1"], 0))
-        self.assertEqual([], block("# COUPLED:x: a", "", "def f():"))
+        self.assertIsNone(value_line(["# COUPLED:x: a", "", "X = 1"], 0, PYTHON))
+        self.assertEqual([], block("a.py", "# COUPLED:x: a", "", "def f():"))
 
     def test_a_marker_with_no_code_after_it_describes_nothing(self) -> None:
-        self.assertIsNone(value_line(["# COUPLED:x: a", "# end"], 0))
+        self.assertIsNone(value_line(["# COUPLED:x: a", "# end"], 0, PYTHON))
 
 
 class DescribedLines(unittest.TestCase):
     def test_a_trailing_marker_describes_its_own_line(self) -> None:
-        self.assertEqual(0, described_line(["X = 1  # COUPLED:x: a", "Y = 2"], 0))
+        self.assertEqual(0, described_line(["X = 1  # COUPLED:x: a", "Y = 2"], 0, PYTHON))
 
     def test_a_marker_on_its_own_line_describes_the_next_line_past_comments(self) -> None:
-        self.assertEqual(2, described_line(["# COUPLED:x: a", "# More words.", "X = 1"], 0))
+        self.assertEqual(2, described_line(["# COUPLED:x: a", "# More words.", "X = 1"], 0, PYTHON))
 
     def test_a_marker_on_its_own_line_of_markdown_describes_the_next_line(self) -> None:
-        self.assertEqual(1, described_line(["COUPLED:x: a", "- rule: A unit is"], 0))
+        self.assertEqual(
+            1, described_line(["COUPLED:x: a", "- rule: A unit is"], 0, syntax_of("README.md"))
+        )
 
     def test_a_marker_with_a_blank_line_before_its_code_describes_no_line(self) -> None:
-        self.assertIsNone(described_line(["COUPLED:x: a", "", "- rule: A unit is"], 0))
+        self.assertIsNone(
+            described_line(["COUPLED:x: a", "", "- rule: A unit is"], 0, syntax_of("README.md"))
+        )
 
 
 class ReadingValues(unittest.TestCase):
@@ -185,6 +198,7 @@ class Blocks(unittest.TestCase):
         self.assertEqual(
             ["private int vat(int net) {", "return net / 5;", "// rounded down", "}"],
             block(
+                "Invoice.java",
                 "/**",
                 " * COUPLED:vat: invoice",
                 " */",
@@ -202,6 +216,7 @@ class Blocks(unittest.TestCase):
         self.assertEqual(
             ["services:", "app:", "image: app", "worker:"],
             block(
+                "compose.yaml",
                 "# COUPLED:x: a",
                 "services:",
                 "  app:",
@@ -214,20 +229,23 @@ class Blocks(unittest.TestCase):
     def test_a_trailing_marker_starts_the_block_on_its_own_line_without_its_comment(self) -> None:
         self.assertEqual(
             ["def f():", "return 1"],
-            block("def f():  # COUPLED:x: a", "    return 1", "# COUPLED:x:END"),
+            block("a.py", "def f():  # COUPLED:x: a", "    return 1", "# COUPLED:x:END"),
         )
 
     def test_a_marker_without_an_end_describes_only_its_line(self) -> None:
-        self.assertEqual(["def f():"], block("# COUPLED:x: a", "def f():", "    return 1", ""))
+        self.assertEqual(
+            ["def f():"], block("a.py", "# COUPLED:x: a", "def f():", "    return 1", "")
+        )
         self.assertEqual(
             ["disable_functions = exec,popen"],
-            block("disable_functions = exec,popen ; COUPLED:x: a", "  other = 1"),
+            block("php.ini", "disable_functions = exec,popen ; COUPLED:x: a", "  other = 1"),
         )
 
     def test_the_markers_of_blocks_inside_a_block_are_not_part_of_it(self) -> None:
         self.assertEqual(
             ["def f():", "TABLE = {", "}", "x = 1", "return TABLE"],
             block(
+                "a.py",
                 "# COUPLED:outer: f",
                 "def f():",
                 "    # COUPLED:inner: table",
@@ -241,10 +259,10 @@ class Blocks(unittest.TestCase):
         )
 
     def test_a_marker_describing_no_line_has_no_block(self) -> None:
-        self.assertEqual([], block("x = 1", "# COUPLED:x: a"))
+        self.assertEqual([], block("a.py", "x = 1", "# COUPLED:x: a"))
 
     def test_a_marker_whose_end_comes_before_any_code_has_no_block(self) -> None:
-        self.assertEqual([], block("# COUPLED:x: a", "# COUPLED:x:END", "f()"))
+        self.assertEqual([], block("a.py", "# COUPLED:x: a", "# COUPLED:x:END", "f()"))
 
 
 class Units(unittest.TestCase):

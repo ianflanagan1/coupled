@@ -5,6 +5,7 @@ using value ops hold."""
 from dataclasses import dataclass
 from typing import assert_never, final
 
+from coupled_tags_lint.core.comments import syntax_of
 from coupled_tags_lint.core.markers import End, Found, Malformed, Marker, find_markers
 from coupled_tags_lint.core.registry import Group, Registry, Unparseable, table_name
 from coupled_tags_lint.core.relations import (
@@ -55,12 +56,13 @@ class Site:
 def file_sites(path: str, lines: list[str]) -> list[Site]:
     """A site for each marker and END in the lines of the file at path."""
     placed = find_markers(lines)
+    syntax = syntax_of(path)
     return [
         Site(
             f"{path}:{item.line + 1}",
             item.found,
-            value_line(lines, item.line),
-            tuple(block_lines(lines, item, placed)),
+            value_line(lines, item.line, syntax),
+            tuple(block_lines(lines, item, placed, syntax)),
             item.close is not None,
             lines[item.line][item.stop :],
         )

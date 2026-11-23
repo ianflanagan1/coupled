@@ -61,7 +61,7 @@ class Hook:
         if found is None:
             return None
         root, chosen = found
-        keys = self._shown.unseen(session, hook.touched_keys(content, changes))
+        keys = self._shown.unseen(session, hook.touched_keys(path, content, changes))
         if not keys:
             return None
         return hook.gate_reason(self._groups(root, chosen, keys), chosen.registry)

@@ -28,7 +28,7 @@ relations = ["nginx >= app", "nginx = ./limits.json#/upload_mb"]
 
 A marker's key names its group; its label names this site within the group. A key and a label are lowercase letters and digits, in words joined by single hyphens, and the space between them is part of the form: what to search for to find a group is `COUPLED:<key>:`, which finds each of its sites and its table in the registry, as the table is named the same way. Prose goes before `COUPLED:`, or after the label and a `.`: `COUPLED:upload-limit: nginx. Larger bodies get a 413.`
 
-A marker describes the code before its comment on its line, or for a marker on a comment line, the first line of code after it, past any other comment lines but not a blank line. `COUPLED:<key>:END`, in a comment after the last line of a block, closes the nearest marker of its key above it, so that it describes every line down to the END. Blocks of different keys can nest but not overlap.
+A marker describes the code before its comment on its line, or for a marker on a comment line, the first line of code after it, past any other comment lines but not a blank line. The lint tells comments from code by the file's own comment syntax, which it knows by the file's extension or name, such as `%` in Erlang and `(* *)` in OCaml; a file of a kind it doesn't know takes the common ones, `#`, `//`, `;`, `--`, `/* */`, `<!-- -->` and `{# #}`. `COUPLED:<key>:END`, in a comment after the last line of a block, closes the nearest marker of its key above it, so that it describes every line down to the END. Blocks of different keys can nest but not overlap.
 
 Each group has a table in the registry, named `["COUPLED:<key>:"]`:
 

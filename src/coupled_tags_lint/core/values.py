@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import assert_never, final
 
-from coupled_tags_lint.core.comments import is_comment_line, strip_comment
+from coupled_tags_lint.core.comments import Syntax, is_comment_line, strip_comment
 from coupled_tags_lint.core.markers import Placed
 from coupled_tags_lint.core.relations import Arith, Formula, ValueOp
 
@@ -37,14 +37,16 @@ _NUMBER = re.compile(r"(-?\d[\d_]*(?:\.\d+)?)\s*[A-Za-z%]*")
 _UNIT = re.compile(r"-?\d[\d_]*(?:\.\d+)?\s*([A-Za-z%]*)")
 
 
-def value_line(lines: list[str], index: int) -> str | None:
-    """The code of the line a marker on lines[index] describes, without its comment: the
-    marker's own line's code before its comment, or if it has none, the first line after it
-    that isn't a comment. None if there's no such line, or a blank line comes first."""
-    described = described_line(lines, index)
+def value_line(lines: list[str], index: int, syntax: Syntax) -> str | None:
+    """The code of the line a marker on lines[index] describes, without its comment, comments
+    being in syntax: the marker's own line's code before its comment, or if it has none, the
+    first line after it that isn't a comment. None if there's no such line, or a blank line
+    comes first."""
+    described = described_line(lines, index, syntax)
     if described is None:
         return None
-    return strip_comment(_head(lines[index]) if described == index else lines[described]).strip()
+    line = _head(lines[index]) if described == index else lines[described]
+    return strip_comment(line, syntax).strip()
 
 
 def _head(line: str) -> str:
@@ -52,36 +54,39 @@ def _head(line: str) -> str:
     return line[: line.find("COUPLED:")] if "COUPLED:" in line else line
 
 
-def described_line(lines: list[str], index: int) -> int | None:
-    """The index of the line a marker on lines[index] describes: its own line if it has code
-    before the marker's comment, or else the first line after it that isn't a comment. None if
-    there's no such line, or a blank line comes first."""
-    if strip_comment(_head(lines[index])).strip():
+def described_line(lines: list[str], index: int, syntax: Syntax) -> int | None:
+    """The index of the line a marker on lines[index] describes, comments being in syntax: its
+    own line if it has code before the marker's comment, or else the first line after it that
+    isn't a comment. None if there's no such line, or a blank line comes first."""
+    if strip_comment(_head(lines[index]), syntax).strip():
         return index
     for after in range(index + 1, len(lines)):
         if not lines[after].strip():
             return None
-        if not is_comment_line(lines[after]):
+        if not is_comment_line(lines[after], syntax):
             return after
     return None
 
 
-def block_lines(lines: list[str], marker: Placed, placed: list[Placed]) -> list[str]:
-    """The lines of code a marker describes, each stripped, without blank lines: the line
-    value_line gives, then, if an END closes the marker, the lines down to the END. The markers
-    of blocks inside it, placed being every marker in lines, are left out of it, so rewording
-    them doesn't change it. Empty if the marker describes no line, or its END comes first."""
-    first = described_line(lines, marker.line)
+def block_lines(
+    lines: list[str], marker: Placed, placed: list[Placed], syntax: Syntax
+) -> list[str]:
+    """The lines of code a marker describes, comments being in syntax, each stripped, without
+    blank lines: the line value_line gives, then, if an END closes the marker, the lines down
+    to the END. The markers of blocks inside it, placed being every marker in lines, are left
+    out of it, so rewording them doesn't change it. Empty if the marker describes no line, or
+    its END comes first."""
+    first = described_line(lines, marker.line, syntax)
     if first is None or (marker.close is not None and first > marker.close):
         return []
-    code = value_line(lines, marker.line) if first == marker.line else lines[first].strip()
+    code = value_line(lines, marker.line, syntax) if first == marker.line else lines[first].strip()
     assert code is not None
     if marker.close is None:
         return [code]
     starts = {other.line for other in placed if first < other.line < marker.close}
     block = [code]
     for index in range(first + 1, marker.close):
-        line = strip_comment(_head(lines[index])) if index in starts else lines[index]
+        line = strip_comment(_head(lines[index]), syntax) if index in starts else lines[index]
         if line.strip():
             block.append(line.strip())
     return block

@@ -28,32 +28,32 @@ CONTENT = "\n".join(
 
 
 def test_an_edit_to_a_marked_line_touches_its_group() -> None:
-    assert touched_keys(CONTENT, [Replace("MAX = 8", False)]) == ["upload-limit"]
+    assert touched_keys("a.py", CONTENT, [Replace("MAX = 8", False)]) == ["upload-limit"]
 
 
 def test_an_edit_to_the_line_a_marker_above_describes_touches_its_group() -> None:
-    assert touched_keys(CONTENT, [Replace("FROM node:24", False)]) == ["node-version"]
+    assert touched_keys("a.py", CONTENT, [Replace("FROM node:24", False)]) == ["node-version"]
 
 
 def test_an_edit_inside_a_block_touches_its_group() -> None:
-    assert touched_keys(CONTENT, [Replace("return n / 5", False)]) == ["vat"]
+    assert touched_keys("a.py", CONTENT, [Replace("return n / 5", False)]) == ["vat"]
 
 
 def test_an_edit_to_unmarked_lines_touches_nothing() -> None:
-    assert touched_keys(CONTENT, [Replace("print(1)", False)]) == []
-    assert touched_keys(CONTENT, [Replace("import os", False)]) == []
+    assert touched_keys("a.py", CONTENT, [Replace("print(1)", False)]) == []
+    assert touched_keys("a.py", CONTENT, [Replace("import os", False)]) == []
 
 
 def test_replacing_every_occurrence_touches_every_one() -> None:
     content = "a = 1\nb = 1  # COUPLED:x: b"
-    assert touched_keys(content, [Replace("= 1", False)]) == []
-    assert touched_keys(content, [Replace("= 1", True)]) == ["x"]
+    assert touched_keys("a.py", content, [Replace("= 1", False)]) == []
+    assert touched_keys("a.py", content, [Replace("= 1", True)]) == ["x"]
 
 
 def test_a_write_touches_the_groups_whose_lines_it_changes() -> None:
     changed = CONTENT.replace("MAX = 8", "MAX = 9")
-    assert touched_keys(CONTENT, [Rewrite(changed)]) == ["upload-limit"]
-    assert touched_keys(CONTENT, [Rewrite(CONTENT + "\nmore()")]) == []
+    assert touched_keys("a.py", CONTENT, [Rewrite(changed)]) == ["upload-limit"]
+    assert touched_keys("a.py", CONTENT, [Rewrite(CONTENT + "\nmore()")]) == []
 
 
 def test_the_keys_in_a_file_are_each_of_its_markers_keys_once() -> None:
@@ -83,3 +83,8 @@ def test_a_long_list_of_sites_is_cut_short() -> None:
     sites = [f"a.py:{n}:X = 1  # COUPLED:x: s{n}" for n in range(MAX_SITES + 5)]
     text = context("a.py", [Group("x", sites, None)], ".coupled-tags.toml")
     assert "... and 5 more" in text
+
+
+def test_an_edit_below_a_marker_in_a_language_s_own_comment_touches_its_group() -> None:
+    content = "\n".join(["% COUPLED:limit: erlang", "% Pinned.", "-define(LIMIT, 8)."])
+    assert touched_keys("limits.erl", content, [Replace("LIMIT, 8", False)]) == ["limit"]

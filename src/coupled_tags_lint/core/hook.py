@@ -11,6 +11,7 @@ import difflib
 from dataclasses import dataclass
 from typing import assert_never, final
 
+from coupled_tags_lint.core.comments import syntax_of
 from coupled_tags_lint.core.markers import End, Malformed, Marker, find_markers
 from coupled_tags_lint.core.values import described_line
 
@@ -39,8 +40,9 @@ class Rewrite:
 type Change = Replace | Rewrite
 
 
-def touched_keys(content: str, changes: list[Change]) -> list[str]:
-    """The keys of the markers covering the lines of content that changes alter, in order."""
+def touched_keys(path: str, content: str, changes: list[Change]) -> list[str]:
+    """The keys of the markers covering the lines of content, the file at path, that changes
+    alter, in order."""
     lines = content.splitlines()
     ranges: list[tuple[int, int]] = []
     for change in changes:
@@ -55,7 +57,7 @@ def touched_keys(content: str, changes: list[Change]) -> list[str]:
     for placed in find_markers(lines):
         match placed.found:
             case Marker(key=key):
-                described = described_line(lines, placed.line)
+                described = described_line(lines, placed.line, syntax_of(path))
                 reach = placed.close if placed.close is not None else described
                 reach = placed.line if reach is None else max(reach, placed.line)
             case End(key=key):

@@ -109,3 +109,8 @@ def test_the_stop_is_the_column_after_the_label() -> None:
     line = "X = 1  # COUPLED:x: app. More."
     [placed] = find_markers([line])
     assert line[placed.stop :] == ". More."
+
+
+def test_a_marker_in_a_haskell_or_ocaml_block_comment_ends_before_its_closer() -> None:
+    assert found("{- COUPLED:x: haskell -}") == [Marker("x", "haskell", ())]
+    assert found("(* COUPLED:x: ocaml *)") == [Marker("x", "ocaml", ())]

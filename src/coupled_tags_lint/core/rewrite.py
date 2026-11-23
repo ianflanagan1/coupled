@@ -18,6 +18,7 @@ lint reports a message that differs from what it would write. When the settings 
 import re
 from typing import assert_never
 
+from coupled_tags_lint.core.comments import CLOSERS
 from coupled_tags_lint.core.markers import Marker, find_markers
 from coupled_tags_lint.core.registry import Group, Registry, Unparseable
 from coupled_tags_lint.core.relations import (
@@ -39,7 +40,6 @@ _POINTER = r'Change only with every "COUPLED:[^"]*" site, per \S+?\.(?=\s|$)'
 # isn't taken for one.
 _RELATIONS = rf"Must be (?:{_OPS}) .*?\.(?=\s|$)"
 _MESSAGE = re.compile(rf"\. (?:{_RELATIONS}(?: {_POINTER})?|{_POINTER})")
-_CLOSERS = ("-->", "*/", "#}")
 
 # The message wanted after each labelled marker, by its key and label. A marker not in it
 # wants none.
@@ -153,7 +153,7 @@ def written_after(after: str, wanted_message: str | None) -> str | None:
         return wanted_text + (rest[1:] if rest.startswith(".") else rest)
     if found is None:
         return None
-    if rest.startswith(" ") and rest.strip() and not rest.lstrip().startswith(_CLOSERS):
+    if rest.startswith(" ") and rest.strip() and not rest.lstrip().startswith(CLOSERS):
         return "." + rest
     return rest
 

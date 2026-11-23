@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass, replace
 from typing import assert_never, final
 
+from coupled_tags_lint.core.comments import CLOSERS
+
 # A key or label: lowercase letters and digits, in words joined by single hyphens. A key
 # starting with a hyphen would read as an option to a search run on the key alone.
 NAME_PATTERN = r"[a-z0-9]+(?:-[a-z0-9]+)*"
@@ -22,7 +24,6 @@ _KEY = re.compile(rf"({NAME_PATTERN}):")
 # A key written as text to search for, quoted: `"COUPLED:upload-limit:"`, not a marker.
 _SEARCH = re.compile(rf"{NAME_PATTERN}:['\"`]")
 _OLD_TAG = re.compile(rf"{NAME_PATTERN}:\[")
-_CLOSERS = ("-->", "*/", "#}")
 
 
 @final
@@ -136,7 +137,7 @@ def _marker(rest: str) -> tuple[Found, int]:
             "relations give it",
         ),
     )
-    if not after.strip() or after.lstrip().startswith(_CLOSERS):
+    if not after.strip() or after.lstrip().startswith(CLOSERS):
         return unlabelled, key.end()
     if not after.startswith(" "):
         return Malformed(
@@ -146,7 +147,7 @@ def _marker(rest: str) -> tuple[Found, int]:
     if label is None:
         return unlabelled, key.end()
     following = after[label.end() :]
-    if following and not following.startswith(".") and not following.lstrip().startswith(_CLOSERS):
+    if following and not following.startswith(".") and not following.lstrip().startswith(CLOSERS):
         if following.startswith(" ") and following.strip():
             return Marker(
                 key.group(1),
