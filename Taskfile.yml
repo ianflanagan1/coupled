@@ -38,7 +38,7 @@ tasks:
   tags:
     desc: Build the flake, then lint this repository's tags with the command it packages
     cmds:
-      # The README's examples and the tests' fixtures are tags by design, some of them broken.
+      # .config/ianf-coupled-tags.toml excludes the README's examples and the tests' fixtures.
       - |
         out=$(nix --extra-experimental-features 'nix-command flakes' build .#coupled-tags-lint --no-link --print-out-paths)
-        "$out/bin/coupled-tags-lint" -x README.md -x tests
+        "$out/bin/coupled-tags-lint"

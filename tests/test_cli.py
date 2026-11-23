@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+SETTINGS = ".config/ianf-coupled-tags.toml"
+
 
 @dataclass(frozen=True)
 class Ran:
@@ -139,6 +141,39 @@ def test_an_excluded_path_is_skipped(sandbox: Sandbox) -> None:
     sandbox.file("docs/b.py", "X = 2  # COUPLED:x-limit:[=]")
     sandbox.lint("--update", "-x", "docs/")
     assert_clean(sandbox.lint("-x", "docs/"))
+
+
+def test_a_path_the_settings_file_excludes_is_skipped(sandbox: Sandbox) -> None:
+    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
+    sandbox.file("docs/b.py", "X = 2  # COUPLED:x-limit:[=]")
+    sandbox.file(SETTINGS, "version = 1", 'exclude = ["docs/"]')
+    sandbox.lock()
+    assert_clean(sandbox.lint())
+
+
+def test_an_excluded_path_adds_to_the_settings_file_s(sandbox: Sandbox) -> None:
+    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
+    sandbox.file("docs/b.py", "X = 2  # COUPLED:x-limit:[=]")
+    sandbox.file("build/c.py", "X = 3  # COUPLED:x-limit:[=]")
+    sandbox.file(SETTINGS, "version = 1", 'exclude = ["docs"]')
+    sandbox.lint("--update", "-x", "build")
+    assert_clean(sandbox.lint("-x", "build"))
+
+
+def test_a_settings_file_with_no_version_is_reported_and_nothing_is_changed(
+    sandbox: Sandbox,
+) -> None:
+    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=; //github.com/me/x/a.py]")
+    sandbox.file(SETTINGS, 'exclude = ["docs"]')
+    ran = sandbox.lint("--update")
+    assert ran.status == 1
+    assert ran.errors.startswith("⚠️ No version in ")
+    assert not (sandbox.repo / ".coupled-tags.lock").exists()
+
+
+def test_a_setting_the_lint_does_not_know_is_reported(sandbox: Sandbox) -> None:
+    sandbox.file(SETTINGS, "version = 1", "skip = []")
+    assert_problem(sandbox.lint(), "ianf-coupled-tags.toml: skip.")
 
 
 def test_list_prints_every_key_and_its_sites(sandbox: Sandbox) -> None:
@@ -328,6 +363,31 @@ def test_a_repository_with_tags_and_no_lock_is_reported(sandbox: Sandbox) -> Non
     sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
     sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
     assert_problem(sandbox.lint(), ".coupled-tags.lock There's no lock.")
+
+
+def test_the_lock_is_the_file_the_settings_file_names(sandbox: Sandbox) -> None:
+    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
+    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
+    sandbox.file(SETTINGS, "version = 1", 'lock-file = ".config/tags.lock"')
+    assert_problem(sandbox.lint(), ".config/tags.lock There's no lock.")
+    ran = sandbox.lint("--update")
+    assert ran.output == "✅ Updated .config/tags.lock.\nNo problems in 1 COUPLED key.\n"
+    assert '"path": "a.py", "relation": "="' in (sandbox.repo / ".config/tags.lock").read_text()
+    assert not (sandbox.repo / ".coupled-tags.lock").exists()
+    assert sandbox.lint().output == "➖ No problems in 1 COUPLED key.\n"
+
+
+def test_a_lock_in_a_directory_that_is_not_there_yet_is_written(sandbox: Sandbox) -> None:
+    sandbox.file("a.py", "X = 1  # COUPLED:x-limit:[=]")
+    sandbox.file("b.py", "Y = 1  # COUPLED:x-limit:[=]")
+    sandbox.file(SETTINGS, "version = 1", 'lock-file = "locks/coupled/tags.lock"')
+    assert_clean(sandbox.lint("--update"))
+    assert (sandbox.repo / "locks/coupled/tags.lock").exists()
+
+
+def test_a_lock_outside_the_repository_is_reported(sandbox: Sandbox) -> None:
+    sandbox.file(SETTINGS, "version = 1", 'lock-file = "../tags.lock"')
+    assert_problem(sandbox.lint(), "must be the path of a file inside the repository")
 
 
 def test_an_edited_structural_block_fails_until_the_lock_is_updated(sandbox: Sandbox) -> None:

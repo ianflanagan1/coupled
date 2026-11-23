@@ -1,7 +1,7 @@
-"""Linting a repository's COUPLED tags: gather the tags in its files, the files in it that they
-refer to and the lock; with --fix, add the clauses the lint can write to the tags and gather
-again; with --update, record the groups in the lock; then check them. Files in other
-repositories aren't read."""
+"""Linting a repository's COUPLED tags: read its settings; gather the tags in its files, the
+files in it that they refer to and the lock its settings name; with --fix, add the clauses the
+lint can write to the tags and gather again; with --update, record the groups in the lock; then
+check them. Files in other repositories aren't read."""
 
 from dataclasses import dataclass
 from typing import Protocol, final
@@ -20,6 +20,7 @@ from coupled_tags_lint.core.check import (
     unchecked,
 )
 from coupled_tags_lint.core.rewrite import rewritten
+from coupled_tags_lint.core.settings import Invalid, Read, settings
 from coupled_tags_lint.core.tags import Tag, Unclosed
 
 
@@ -37,6 +38,13 @@ class Files(Protocol):
     def write(self, path: str, content: str) -> None: ...
 
 
+class SettingsFile(Protocol):
+    def read(self, root: str) -> Read | Invalid | None:
+        """The settings file of the repository at root, None if it has none, or Invalid if it
+        isn't a settings file in a version the lint reads."""
+        ...
+
+
 @final
 @dataclass(frozen=True)
 class Report:
@@ -49,6 +57,8 @@ class Report:
     fixed: list[str]
     # Whether --update changed the lock.
     updated: bool
+    # The lock file's path from the root, as the repository's settings give it.
+    lock_file: str
 
 
 @final
@@ -62,11 +72,18 @@ class _Gathered:
 
 @final
 class Lint:
-    def __init__(self, search: TagSearch, files: Files) -> None:
+    def __init__(self, search: TagSearch, files: Files, settings: SettingsFile) -> None:
         self._search = search
         self._files = files
+        self._settings = settings
 
-    def run(self, root: str, excludes: list[str], update: bool, fix: bool) -> Report:
+    def run(self, root: str, excludes: list[str], update: bool, fix: bool) -> Report | Invalid:
+        """Lints the repository at root, leaving out the paths its settings exclude and the
+        excludes given. Invalid, with nothing changed, when its settings can't be used."""
+        found = settings(self._settings.read(root))
+        if isinstance(found, Invalid):
+            return found
+        excludes = found.excludes + excludes
         gathered = self._gather(root, excludes)
         fixed: list[str] = []
         if fix:
@@ -76,7 +93,7 @@ class Lint:
         sites = gathered.sites
 
         now = lock.current(sites, gathered.files)
-        lock_path = root + "/" + lock.LOCK_FILE
+        lock_path = root + "/" + found.lock
         text = self._files.read(lock_path)
         old = None if text is None else lock.parse(text)
         updated = False
@@ -91,13 +108,13 @@ class Lint:
         problems = (
             gathered.unreadable
             + check(sites, gathered.files)
-            + lock.compare(old, now, excludes, lock.LOCK_FILE, lock.UPDATE)
+            + lock.compare(old, now, excludes, found.lock, lock.UPDATE)
         )
         keys: dict[str, list[str]] = {}
         for site in sites:
             if isinstance(site.found, Tag | Unclosed):
                 keys.setdefault(site.found.key, []).append(site.where)
-        return Report(problems, list(keys.items()), unchecked(sites), fixed, updated)
+        return Report(problems, list(keys.items()), unchecked(sites), fixed, updated, found.lock)
 
     def _gather(self, root: str, excludes: list[str]) -> _Gathered:
         paths = [path for path in self._search.paths(root) if not lock.excluded(path, excludes)]

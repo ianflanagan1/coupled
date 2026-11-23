@@ -1,0 +1,4 @@
+#:schema https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/ianf-coupled-tags.v1.json
+version = 1
+# The README's examples and the tests' fixtures are tags by design, some of them broken.
+exclude = ["README.md", "tests"]

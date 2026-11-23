@@ -17,6 +17,23 @@
         "type": "github"
       }
     },
+    "git-default-branch": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792940903,
+        "narHash": "sha256-6wARSmE7sCfuno+h/3YMHUAP2d5BzU+1xSW/hEkuSC0=",
+        "owner": "ianflanagan1",
+        "repo": "git-default-branch",
+        "rev": "beb708c3f4af04f5aad90256f99aa787c7de9a43",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ianflanagan1",
+        "ref": "v0.1.0",
+        "repo": "git-default-branch",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1793706278,
@@ -33,10 +50,29 @@
         "type": "github"
       }
     },
+    "repo-settings": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792940945,
+        "narHash": "sha256-VHIyUG6BH4k0eyYwlsiqlHaLpZ1ALGrwhdpYLf/3oL0=",
+        "owner": "ianflanagan1",
+        "repo": "repo-settings",
+        "rev": "d14e9ad143386e7855695052141719cbbb4b8962",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ianflanagan1",
+        "ref": "v0.1.0",
+        "repo": "repo-settings",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "cli-kit": "cli-kit",
-        "nixpkgs": "nixpkgs"
+        "git-default-branch": "git-default-branch",
+        "nixpkgs": "nixpkgs",
+        "repo-settings": "repo-settings"
       }
     }
   },

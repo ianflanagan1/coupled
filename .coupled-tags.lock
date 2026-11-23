@@ -4,6 +4,14 @@
     "cli-kit-version": [
       {"path": "flake.nix", "relation": "=; @/cli-kit/(v[0-9.]+)/"},
       {"path": "pyproject.toml", "relation": "=; @/tag = \"([^\"]+)\"/"}
+    ],
+    "git-default-branch-version": [
+      {"path": "flake.nix", "relation": "=; @/git-default-branch/(v[0-9.]+)/"},
+      {"path": "pyproject.toml", "relation": "=; @/tag = \"([^\"]+)\"/"}
+    ],
+    "repo-settings-version": [
+      {"path": "flake.nix", "relation": "=; @/repo-settings/(v[0-9.]+)/"},
+      {"path": "pyproject.toml", "relation": "=; @/tag = \"([^\"]+)\"/"}
     ]
   }
 }

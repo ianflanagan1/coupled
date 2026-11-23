@@ -23,7 +23,7 @@ Runs on macOS and Linux. Built on [cli-kit](https://github.com/ianflanagan1/cli-
 - **orphan keys:** the key appears only once, which usually means the other end was deleted, unless its tag refers to a file
 - **groups:** a group with no op, one that mixes value ops with structural ops, a bare op in a group that mixes ops, and a site or file nothing relates
 - **values**, in groups using value ops: a site whose value it can't read, and a relation that doesn't hold, with the values it compared. A file a tag refers to gives its one tag of the key, if it's excluded from the search, or else its value at the pointer, or its one line; a longer file with neither can't be read.
-- **the lock:** a group that differs from what `.coupled-tags.lock` records (see [The lock](#the-lock))
+- **the lock:** a group that differs from what the lock records (see [The lock](#the-lock))
 - **unreadable files:** a file holding `COUPLED:` that isn't UTF-8
 
 A tag runs from `[` to the `]` that closes it, which may be on a later line of its comment, so a tag that a formatter or editor wraps is still read whole. The opener of a line comment (`#`, `//`, `;`, `--`) and the `*` of a docblock line are left out where it runs on; in a block comment, or outside one as in Markdown, it runs on over any lines. Brackets inside it, such as `$_ENV['X']`, and a selector's regex don't close it. Text before `COUPLED:` and after the `]` isn't part of the tag, so prose goes there, and comment lines between a tag on its own line and the code it describes are skipped.
@@ -54,7 +54,7 @@ It leaves to you what it can't decide: two equations that don't mirror each othe
 
 ## The lock
 
-Relations between values are checked on every run, but structural ops (`same-as`, `same-shape`, `subset-of`, `superset-of`) can't be, and a group can lose a site without any relation failing. So `.coupled-tags.lock`, at the repository's root, records each group as it was last reviewed:
+Relations between values are checked on every run, but structural ops (`same-as`, `same-shape`, `subset-of`, `superset-of`) can't be, and a group can lose a site without any relation failing. So the lock, `.coupled-tags.lock` at the repository's root unless the [settings file](#settings) names another file, records each group as it was last reviewed:
 
 - every site, with its relation
 - in a group using value ops, the unit on each value (`m` in `10m`), since numbers are compared without their units
@@ -64,7 +64,7 @@ The lint fails when the code differs: a site added or removed, a relation rewrit
 
 A block is the line the tag describes and, if a later `COUPLED:<key>:END` closes the tag, every line down to the END, whatever their indentation. A structural tag with no END describes only its line. Indentation, blank lines, and the tags and ENDs of blocks nested inside it don't count, so reindenting a block or rewording a tag inside it isn't a change.
 
-A repository with tags and no lock fails until `--update` writes one. Sites under a `-x` path are kept in the lock as they were and not compared, so run `--update` with the same `-x` options as the check. Other repositories aren't recorded.
+A repository with tags and no lock fails until `--update` writes one. Sites under an excluded path are kept in the lock as they were and not compared. Exclude paths in the [settings file](#settings), which every run reads, rather than with `-x`, which `--update` and the check must each be given. Other repositories aren't recorded.
 
 It does **not** look at diffs. Diff-aware enforcement in the style of Google's `LINT.IfChange` is out of scope; the lock gives the same effect from the code alone.
 
@@ -73,22 +73,39 @@ It does **not** look at diffs. Diff-aware enforcement in the style of Google's `
 ```sh
 coupled-tags-lint            # check the current directory
 coupled-tags-lint -l         # also list every key and its sites
-coupled-tags-lint -x docs/   # exclude a path prefix (repeatable)
+coupled-tags-lint -x docs/   # exclude a path prefix, besides the settings file's (repeatable)
 coupled-tags-lint --fix      # add mirrored equations and missing files to the tags, then check
-coupled-tags-lint --update   # record the groups in .coupled-tags.lock, then check
+coupled-tags-lint --update   # record the groups in the lock, then check
 ```
 
 In a git work tree it scans tracked files plus untracked files that aren't ignored. Elsewhere it uses `grep --recursive`, skipping `.git`, `node_modules` and `vendor`. It ends with one status line: `➖` and exit status 0 when clean, `⚠️` and the problems, one per line, with exit status 1 when it finds any. A usage error exits with 2.
 
+## Settings
+
+A repository sets the paths to exclude on every run, and where its lock is, in `.config/ianf-coupled-tags.toml`, committed with its code:
+
+```toml
+#:schema https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/ianf-coupled-tags.v1.json
+version = 1
+exclude = ["docs", "tests/fixtures"]
+lock-file = ".config/coupled-tags.lock"
+```
+
+- `version`: the version of the file's format, which is 1.
+- `exclude`: path prefixes, relative to the directory scanned, whose tags aren't checked, such as examples and test fixtures. None by default.
+- `lock-file`: the lock file's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `.coupled-tags.lock` by default. `--update` makes its directory if it isn't there. The lint doesn't move a lock: when you change this, move the file too.
+
+The file is optional. The lint reads the copy on disk in the directory it scans, so a branch that adds fixtures can exclude them in the same change. A file that isn't valid TOML, has no `version` or one the lint doesn't read, holds a setting it doesn't know, or names a lock outside the repository stops the run with `⚠️` and exit status 1, before anything is changed. It's read with [repo-settings](https://github.com/ianflanagan1/repo-settings), and its schema is in `schema/`.
+
 ## Adding it to a project
 
-This repository is a Nix flake that packages the lint as the `coupled-tags-lint` command, with the Python, `git` and `grep` it uses pinned, so it behaves the same on macOS, Linux and CI. Add a release of it to a project's devbox:
+This repository is a Nix flake that packages the lint as the `coupled-tags-lint` command, with the Python, `tomlkit`, `git` and `grep` it uses pinned, so it behaves the same on macOS, Linux and CI. Add a release of it to a project's devbox:
 
 ```sh
 devbox add github:ianflanagan1/coupled-tags-lint/v0.2.0#coupled-tags-lint
 ```
 
-Then run `coupled-tags-lint` in the project's check, as a step of its Taskfile `check` task, so CI runs it too, and commit `.coupled-tags.lock`.
+Then run `coupled-tags-lint` in the project's check, as a step of its Taskfile `check` task, so CI runs it too, and commit the lock.
 
 To move to a new release, change the tag in `devbox.json` and run `devbox update`. Without devbox, `nix run github:ianflanagan1/coupled-tags-lint` runs it once.
 
@@ -107,6 +124,6 @@ devbox run -- task lint    # ruff check and format
 devbox run -- task check   # lint, test, then build the flake and lint this repository's tags
 ```
 
-`src/coupled_tags_lint/core/` parses tags, reads values and blocks, checks groups, works out fixes, rewrites tags and builds and compares the lock as pure functions; `orchestrators/lint.py` gathers the files holding tags, the files they refer to and the lock through its ports, and writes the fixed tags and the lock; `adapters/` holds git grep, the file system and the command line; `__main__.py` wires them.
+`src/coupled_tags_lint/core/` parses tags, reads values and blocks, checks groups, works out fixes, rewrites tags and builds and compares the lock as pure functions; `orchestrators/lint.py` gathers the files holding tags, the files they refer to, the settings and the lock through its ports, and writes the fixed tags and the lock; `core/settings.py` decides what a settings file excludes and which file is the lock; `adapters/` holds git grep, the file system, the settings file and the command line; `__main__.py` wires them.
 
 To release, raise `version` in `pyproject.toml`, commit, then run `github release . patch|minor|major`. Projects move to it by changing their tag.
