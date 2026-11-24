@@ -95,14 +95,14 @@ A repository sets the paths to exclude on every run, where its registry is, and 
 version = 1
 exclude = ["docs", "tests/fixtures"]
 registry-file = ".config/coupled.toml"
-tag-relations = true
-tag-pointer = true
+markers-show-relations = true
+markers-point-to-registry = true
 ```
 
 - `version`: the version of the file's format, which is 1.
 - `exclude`: path prefixes, relative to the directory scanned, whose markers aren't checked, such as examples and test fixtures. None by default.
 - `registry-file`: the registry's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `coupled-registry.toml` by default. The lint doesn't move a registry: when you change this, move the file too.
-- `tag-relations` and `tag-pointer`: what follows each marker's label, each `false` by default. `tag-relations` gives the site's own relations as seen from it, so any reader, a person in an editor among them, sees what must hold without opening the registry. `tag-pointer` says what to search for and which file describes the group, for a reader who doesn't know the convention, such as an AI agent without the ianf-coupled skill or its hooks; a reader who knows it can do without. With both on, the relations come first. A site no relation names gets no relations. `--fix` writes the message from the registry, or drops it when both are off, and the lint reports one that differs from what `--fix` would write, so it's never stale:
+- `markers-show-relations` and `markers-point-to-registry`: what follows each marker's label, each `false` by default. `markers-show-relations` gives the site's own relations as seen from it, so any reader, a person in an editor among them, sees what must hold without opening the registry. `markers-point-to-registry` says what to search for and which file describes the group, for a reader who doesn't know the convention, such as an AI agent without the ianf-coupled skill or its hooks; a reader who knows it can do without. With both on, the relations come first. A site no relation names gets no relations. `--fix` writes the message from the registry, or drops it when both are off, and the lint reports one that differs from what `--fix` would write, so it's never stale:
 
   ```python
   MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy.

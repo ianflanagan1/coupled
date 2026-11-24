@@ -32,9 +32,10 @@ or a block edited is reported until the group is reviewed and recorded with
 <dir>/.config/coupled.toml, if it's there, sets beside version = 1 the
 path prefixes to exclude on every run, as exclude = ["docs", "tests"], the
 registry, as registry-file = ".config/coupled-registry.toml", and what
-follows each marker's label: tag-relations = true for the site's own relations,
-and tag-pointer = true for what to search for and which file describes its
-group. Both are off by default. --fix writes the message.
+follows each marker's label: markers-show-relations = true for the site's
+own relations, and markers-point-to-registry = true for what to search for
+and which file describes its group. Both are off by default. --fix writes
+the message.
 
 Exit status: 0 clean, 1 problems found, 2 usage error."""
 

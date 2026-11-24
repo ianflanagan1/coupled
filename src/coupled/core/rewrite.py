@@ -1,10 +1,10 @@
 """The message after a marker's label, which a repository's settings turn on, and writing it as
 --fix does.
 
-Its two parts are each turned on by a setting. tag-relations gives the site's own relations, as
-seen from it, for any reader; tag-pointer tells a reader who doesn't know the convention, such
-as an AI agent without the ianf-coupled skill, what to search for and which file describes the
-group:
+Its two parts are each turned on by a setting. markers-show-relations gives the site's own
+relations, as seen from it, for any reader; markers-point-to-registry tells a reader who doesn't
+know the convention, such as an AI agent without the ianf-coupled skill, what to search for and
+which file describes the group:
 
     COUPLED:<key>: <label>. Must be <op> <ref>, ...
     COUPLED:<key>: <label>. Change only with every "COUPLED:<key>:" site, per <registry>.

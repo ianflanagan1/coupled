@@ -281,7 +281,7 @@ def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
 
 def test_fix_writes_the_message_when_the_settings_turn_it_on(sandbox: Sandbox) -> None:
     upload(sandbox, 8)
-    sandbox.file(SETTINGS, "version = 1", "tag-pointer = true")
+    sandbox.file(SETTINGS, "version = 1", "markers-point-to-registry = true")
     assert_problem(sandbox.lint(), "--fix does it")
     sandbox.lint("--fix", "--update", "upload-limit")
     assert (sandbox.repo / "app.py").read_text() == (
@@ -294,7 +294,7 @@ def test_fix_writes_each_site_s_relations_alone_when_the_settings_ask_only_for_t
     sandbox: Sandbox,
 ) -> None:
     upload(sandbox, 8)
-    sandbox.file(SETTINGS, "version = 1", "tag-relations = true")
+    sandbox.file(SETTINGS, "version = 1", "markers-show-relations = true")
     sandbox.lint("--fix", "--update", "upload-limit")
     assert (sandbox.repo / "app.py").read_text() == (
         "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy.\n"
@@ -306,7 +306,9 @@ def test_fix_writes_each_site_s_relations_before_the_pointer_when_both_are_on(
     sandbox: Sandbox,
 ) -> None:
     upload(sandbox, 8)
-    sandbox.file(SETTINGS, "version = 1", "tag-relations = true", "tag-pointer = true")
+    sandbox.file(
+        SETTINGS, "version = 1", "markers-show-relations = true", "markers-point-to-registry = true"
+    )
     sandbox.lint("--fix", "--update", "upload-limit")
     assert (sandbox.repo / "app.py").read_text() == (
         f"MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy. {MESSAGE}\n"

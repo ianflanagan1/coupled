@@ -4,5 +4,5 @@ registry-file = ".config/coupled-registry.toml"  # COUPLED:registry-path: settin
 # tests/fixtures holds markers written wrong on purpose, which aren't sites.
 exclude = ["tests/fixtures"]
 # Turn either on and run `coupled --fix` to write each marker's message.
-tag-relations = false
-tag-pointer = false
+markers-show-relations = false
+markers-point-to-registry = false

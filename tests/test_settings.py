@@ -94,16 +94,20 @@ def test_a_registry_that_names_a_directory_is_invalid() -> None:
     assert settings(read({"registry-file": "config/"})) == NOT_A_REGISTRY
 
 
-def test_tag_relations_and_tag_pointer_are_each_turned_on_on_their_own() -> None:
+def test_markers_show_relations_and_markers_point_to_registry_are_each_turned_on_on_their_own() -> (
+    None
+):
     for pointer in (False, True):
         for relations in (False, True):
-            found = settings(read({"tag-pointer": pointer, "tag-relations": relations}))
+            found = settings(
+                read({"markers-point-to-registry": pointer, "markers-show-relations": relations})
+            )
             wanted = TagMessage(pointer=pointer, relations=relations)
             assert found == Settings([], REGISTRY_FILE, wanted)
 
 
-def test_a_tag_setting_that_is_not_true_or_false_is_invalid() -> None:
-    for name in ("tag-pointer", "tag-relations"):
+def test_a_marker_message_setting_that_is_not_true_or_false_is_invalid() -> None:
+    for name in ("markers-point-to-registry", "markers-show-relations"):
         for written in ("yes", 1):
             found = settings(read({name: written}))
             assert found == Invalid(f"{name} in {WHERE} must be true or false.", ())

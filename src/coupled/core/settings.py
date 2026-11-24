@@ -3,8 +3,8 @@
     version = 1                                      # the file format's version: see schema/
     exclude = ["README.md", "tests"]                 # paths not checked; none by default
     registry-file = ".config/coupled-registry.toml"  # coupled-registry.toml by default
-    tag-pointer = true                               # say where each group is; off by default
-    tag-relations = true                             # give each label's relations; off by default
+    markers-point-to-registry = true                 # say where each group is; off by default
+    markers-show-relations = true                    # give each label's relations; off by default
 
 A repository needn't have the file. The paths it excludes are skipped on every run, so the check
 and --update can't disagree about them, nor about which file is the registry.
@@ -19,7 +19,7 @@ FILE = ".config/coupled.toml"
 # The registry's path from the repository's root, unless the settings name another.
 REGISTRY_FILE = "coupled-registry.toml"
 
-_KNOWN = ("exclude", "registry-file", "tag-pointer", "tag-relations")
+_KNOWN = ("exclude", "registry-file", "markers-point-to-registry", "markers-show-relations")
 
 
 @final
@@ -110,12 +110,12 @@ def _v1(table: dict[str, object], where: str) -> Settings | Invalid:
         return Invalid(
             f"registry-file in {where} must be the path of a file inside the repository.", ()
         )
-    pointer = table.get("tag-pointer", False)
+    pointer = table.get("markers-point-to-registry", False)
     if not isinstance(pointer, bool):
-        return Invalid(f"tag-pointer in {where} must be true or false.", ())
-    relations = table.get("tag-relations", False)
+        return Invalid(f"markers-point-to-registry in {where} must be true or false.", ())
+    relations = table.get("markers-show-relations", False)
     if not isinstance(relations, bool):
-        return Invalid(f"tag-relations in {where} must be true or false.", ())
+        return Invalid(f"markers-show-relations in {where} must be true or false.", ())
     return Settings(excludes, registry_file, TagMessage(pointer=pointer, relations=relations))
 
 
