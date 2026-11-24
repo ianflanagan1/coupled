@@ -233,12 +233,16 @@ def _is_scalar(node: object) -> bool:
     return isinstance(node, str | int | float) and not isinstance(node, bool)
 
 
+# RFC 6901's array-index: ASCII digits with no leading zero.
+_ARRAY_INDEX = re.compile(r"0|[1-9][0-9]*")
+
+
 def _resolve(node: object, pointer: str) -> _At | None:
     for token in pointer.lstrip("/").split("/"):
         token = token.replace("~1", "/").replace("~0", "~")
         if isinstance(node, dict) and token in node:
             node = node[token]
-        elif isinstance(node, list) and token.isdigit() and int(token) < len(node):
+        elif isinstance(node, list) and _ARRAY_INDEX.fullmatch(token) and int(token) < len(node):
             node = node[int(token)]
         else:
             return None

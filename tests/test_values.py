@@ -152,6 +152,16 @@ class FileValues(unittest.TestCase):
         self.assertIsInstance(read_file_value('{"a": {}}', "/a"), Unreadable)
         self.assertIsInstance(read_file_value('{"a": true}', "/a"), Unreadable)
 
+    def test_a_pointer_reaches_through_a_list_by_index(self) -> None:
+        content = '{"runtimes": [{"name": "node"}, {"name": "python", "version": "3.13"}]}'
+        self.assertEqual(Value("node"), read_file_value(content, "/runtimes/0/name"))
+        self.assertEqual(Value("3.13"), read_file_value(content, "/runtimes/1/version"))
+
+    def test_a_list_index_that_is_not_plain_decimal_digits_reaches_nothing(self) -> None:
+        content = '{"list": ["a", "b", "c"]}'
+        for index in ("3", "-", "-1", "01", "00", "+1", " 1", "1 ", "1.0", "²", "١", ""):
+            self.assertIsInstance(read_file_value(content, f"/list/{index}"), Unreadable, index)
+
     def test_a_pointer_into_a_file_that_is_not_json_is_unreadable(self) -> None:
         self.assertIsInstance(read_file_value("a = 1", "/a"), Unreadable)
 
