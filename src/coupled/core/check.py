@@ -118,12 +118,13 @@ def labelled(sites: list[Site], key: str) -> list[tuple[Site, str]]:
 def file_paths(registry: Registry) -> list[str]:
     """The distinct paths in this repository that the registry's groups refer to, in order:
     the files check needs read."""
-    paths: list[str] = []
-    for group in registry.groups.values():
-        paths += [
-            ref.path for ref in group.file_refs() if ref.repo is None and ref.path not in paths
-        ]
-    return paths
+    paths = [
+        ref.path
+        for group in registry.groups.values()
+        for ref in group.file_refs()
+        if ref.repo is None
+    ]
+    return list(dict.fromkeys(paths))
 
 
 def unchecked(registry: Registry | Unparseable | None) -> list[str]:
@@ -131,12 +132,13 @@ def unchecked(registry: Registry | Unparseable | None) -> list[str]:
     read."""
     if not isinstance(registry, Registry):
         return []
-    repos: list[str] = []
-    for group in registry.groups.values():
-        repos += [
-            ref.repo for ref in group.file_refs() if ref.repo is not None and ref.repo not in repos
-        ]
-    return repos
+    repos = [
+        ref.repo
+        for group in registry.groups.values()
+        for ref in group.file_refs()
+        if ref.repo is not None
+    ]
+    return list(dict.fromkeys(repos))
 
 
 def no_file_sites(registry: Registry | Unparseable | None) -> list[str]:

@@ -6,8 +6,10 @@ from coupled.core.check import (
     Missing,
     Problem,
     check,
+    file_paths,
     file_sites,
     no_file_sites,
+    unchecked,
 )
 from coupled.core.registry import Registry, parse
 from coupled.core.settings import MarkerMessage
@@ -446,3 +448,23 @@ def test_sites_with_no_file_are_listed_as_not_checked() -> None:
     parsed = parse("version = 1\n" + GOOGLE)
     assert isinstance(parsed, Registry)
     assert no_file_sites(parsed) == ["oauth-redirect google"]
+
+
+def test_a_repository_one_group_names_several_files_in_is_listed_once() -> None:
+    parsed = parse(
+        "version = 1\n"
+        '["COUPLED:schema:"]\nrelations = ["same-shape"]\n'
+        'files = ["//github.com/me/rules/a.json", "//github.com/me/rules/b.go"]\n'
+        'why = "both read one listing"\n'
+    )
+    assert isinstance(parsed, Registry)
+    assert unchecked(parsed) == ["github.com/me/rules"]
+
+
+def test_a_file_one_group_names_twice_is_read_once() -> None:
+    parsed = parse(
+        "version = 1\n"
+        '["COUPLED:v:"]\nrelations = ["./a.json#/x = ./b.json", "./a.json#/y = ./c.json"]\n'
+    )
+    assert isinstance(parsed, Registry)
+    assert file_paths(parsed) == ["a.json", "b.json", "c.json"]
