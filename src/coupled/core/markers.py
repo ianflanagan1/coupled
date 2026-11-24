@@ -9,7 +9,7 @@ or after the label and a `.`: `COUPLED:<key>: <label>. <prose>`.
 marker describes every line between them.
 
 A file holding `COUPLED:IGNORE-FILE` alone on a line, or alone in a comment on it, has no
-markers: its `COUPLED:` text is all examples, such as the coupled-tags skill's, wherever it's
+markers: its `COUPLED:` text is all examples, such as the ianf-coupled skill's, wherever it's
 copied. Written anywhere else in a line, it's a mention, which doesn't.
 """
 

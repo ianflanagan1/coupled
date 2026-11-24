@@ -3,7 +3,7 @@
 
 Its two parts are each turned on by a setting. tag-relations gives the site's own relations, as
 seen from it, for any reader; tag-pointer tells a reader who doesn't know the convention, such
-as an AI agent without the coupled-tags skill, what to search for and which file describes the
+as an AI agent without the ianf-coupled skill, what to search for and which file describes the
 group:
 
     COUPLED:<key>: <label>. Must be <op> <ref>, ...
