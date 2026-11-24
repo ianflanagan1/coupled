@@ -30,6 +30,12 @@ relations = ["./.python-version = ./web/package.json#/engines/python-backend"]
 relations = ["css = ts"]
 select = { css = 'max-width: (\d+)px' }
 
+# Text compared by =, in a file whose name gives no comment syntax. CODEOWNERS paths start at
+# the root with a slash, which the selector leaves out.
+["COUPLED:registry-path:"]
+relations = ["owners = settings"]
+select = { owners = '^/(\S+)' }
+
 # Structural ops: blocks closed by END, recorded in the reviewed section rather than compared.
 ["COUPLED:safe-name:"]
 relations = ["same-as"]
@@ -64,6 +70,11 @@ definition = "07b3ccec236290ec"
 
 [reviewed."COUPLED:python-version:"]
 definition = "6cf464bb0c64aed5"
+
+[reviewed."COUPLED:registry-path:"]
+definition = "3421604aea224ae7"
+"COUPLED:registry-path: owners" = {}
+"COUPLED:registry-path: settings" = {}
 
 [reviewed."COUPLED:request-timeout:"]
 definition = "13986db4799dc2ee"

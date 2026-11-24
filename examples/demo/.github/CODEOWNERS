@@ -1,0 +1,15 @@
+# A change to which sites a group holds fails the lint until `coupled-tags-lint --update`
+# records it in the registry, so a change to the registry is a change to what's coupled. The
+# branch ruleset requires a pull request with no approvals, but a code owner's review: a pull
+# request touching only the files below waits for a person, and every other one merges once CI
+# passes. Agents push under their own account, since no one can approve their own pull request.
+
+# The registry, and the settings, whose exclude list and registry-file could take sites out of
+# the lint without the registry changing.
+# COUPLED:registry-path: owners
+/.config/coupled-tags-registry.toml @demo-org/coupling-reviewers
+/.config/coupled-tags.toml @demo-org/coupling-reviewers
+
+# What enforces the review: CI, which runs the lint, and this file.
+/.github/workflows/ @demo-org/coupling-reviewers
+/.github/CODEOWNERS @demo-org/coupling-reviewers

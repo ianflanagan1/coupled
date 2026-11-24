@@ -141,6 +141,31 @@ Then run `coupled-tags-lint` in the project's check, as a step of its Taskfile `
 
 To move to a new release, change the tag in `devbox.json` and run `devbox update`. Without devbox, `nix run github:ianflanagan1/coupled-tags-lint` runs it once.
 
+## Reviewing changes to the registry
+
+Every change to what's coupled reaches the registry. A site added, removed or relabelled, a group's table edited, a structural block changed, or a file holding sites excluded in the settings or marked `COUPLED:IGNORE-FILE`, fails the lint until `--update` records it there. So agents can edit coupled code and pass the build, while a person still reviews each change to the coupling itself, by requiring review of the registry before merging, and letting every other change merge once CI passes.
+
+The lint can't do this on its own: anything that passes the build, an agent can write, `--update` included. The review is enforced where changes merge. On GitHub:
+
+1. Give the registry an owner in `.github/CODEOWNERS`, along with the files that could switch the check off:
+
+   ```
+   /coupled-tags-registry.toml @<owner>
+   /.config/coupled-tags.toml  @<owner>
+   /Taskfile.yml               @<owner>
+   /devbox.json                @<owner>
+   /.github/workflows/         @<owner>
+   /.github/CODEOWNERS         @<owner>
+   ```
+
+   The settings can move the registry and exclude paths, the Taskfile and workflows run the lint, `devbox.json` pins its version, and `CODEOWNERS` holds the rule. Write the registry's path as `registry-file` gives it; [examples/demo](examples/demo) makes the two a COUPLED group, so they can't drift apart.
+
+2. Protect the default branch with a ruleset: require a pull request with 0 approvals and review from code owners, and require the CI check that runs the lint. A pull request touching none of the owned files then merges once CI passes, by auto-merge if it's on; one touching any of them waits for an owner's approval.
+
+3. Let agents push under their own account or GitHub App, with write access to contents and pull requests but no admin rights and no place on the ruleset's bypass list. No one can approve their own pull request, so an agent pushing as you would leave your approval impossible.
+
+GitHub reads `CODEOWNERS` from the pull request's base branch, so a pull request that removes an owner still needs that owner's review. A pull request that drops the lint from CI has to change a workflow, the Taskfile or `devbox.json`, so it needs review too.
+
 ## Installing it for yourself
 
 ```sh
