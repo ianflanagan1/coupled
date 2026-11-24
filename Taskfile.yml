@@ -31,7 +31,7 @@ tasks:
       - |
         for f in {{range .CLI_ARGS_LIST}}{{shellQuote .}} {{end}}; do
           case "$f" in
-          *.py|*.pyi) uv run ruff format --quiet "$f" && uv run ruff check --quiet --fix "$f" || exit 1 ;;
+          *.py|*.pyi) uv run ruff format --quiet --force-exclude "$f" && uv run ruff check --quiet --fix --force-exclude "$f" || exit 1 ;;
           esac
         done
 

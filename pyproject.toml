@@ -31,6 +31,8 @@ addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
 line-length = 100
+# The demo stands in for another project, whose layout this project's formatter doesn't decide.
+extend-exclude = ["examples/demo"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
