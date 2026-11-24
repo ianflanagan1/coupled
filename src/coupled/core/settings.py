@@ -1,4 +1,4 @@
-"""A repository's settings for its COUPLED tags, committed as .config/coupled.toml:
+"""A repository's settings for its COUPLED markers, committed as .config/coupled.toml:
 
     version = 1                                      # the file format's version: see schema/
     exclude = ["README.md", "tests"]                 # paths not checked; none by default
@@ -24,7 +24,7 @@ _KNOWN = ("exclude", "registry-file", "markers-point-to-registry", "markers-show
 
 @final
 @dataclass(frozen=True)
-class TagMessage:
+class MarkerMessage:
     """What follows each marker's label, each part turned on on its own: the site's own
     relations, as seen from it, then a pointer saying what to search for and which file
     describes the group."""
@@ -64,17 +64,17 @@ class Invalid:
 @final
 @dataclass(frozen=True)
 class Settings:
-    # The path prefixes whose tags aren't checked, without a trailing slash.
+    # The path prefixes whose markers aren't checked, without a trailing slash.
     excludes: list[str]
     # The registry's path from the repository's root.
     registry_file: str
     # What follows each marker's label.
-    message: TagMessage
+    message: MarkerMessage
 
 
 def defaults() -> Settings:
     """The settings of a repository with no settings file."""
-    return Settings([], REGISTRY_FILE, TagMessage(pointer=False, relations=False))
+    return Settings([], REGISTRY_FILE, MarkerMessage(pointer=False, relations=False))
 
 
 def settings(read: Read | Invalid | None) -> Settings | Invalid:
@@ -116,7 +116,7 @@ def _v1(table: dict[str, object], where: str) -> Settings | Invalid:
     relations = table.get("markers-show-relations", False)
     if not isinstance(relations, bool):
         return Invalid(f"markers-show-relations in {where} must be true or false.", ())
-    return Settings(excludes, registry_file, TagMessage(pointer=pointer, relations=relations))
+    return Settings(excludes, registry_file, MarkerMessage(pointer=pointer, relations=relations))
 
 
 def _inside(path: str) -> bool:

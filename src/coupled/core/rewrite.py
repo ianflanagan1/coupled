@@ -32,7 +32,7 @@ from coupled.core.relations import (
     ValueOp,
     ref_text,
 )
-from coupled.core.settings import TagMessage
+from coupled.core.settings import MarkerMessage
 
 _OPS = "|".join(re.escape(op.value) for op in (*ValueOp, *StructuralOp))
 _POINTER = r'Change only with every "COUPLED:[^"]*" site, per \S+?\.(?=\s|$)'
@@ -60,7 +60,7 @@ def message(key: str, registry_file: str, relations: str | None, pointer: bool) 
 def wanted(
     markers: list[tuple[str, str]],
     registry: Registry | Unparseable | None,
-    tag_message: TagMessage,
+    marker_message: MarkerMessage,
     registry_file: str,
 ) -> Wanted:
     """The message each of markers, by key and label, wants as the settings say. A marker
@@ -69,10 +69,10 @@ def wanted(
     result: Wanted = {}
     for key, label in markers:
         relations = None
-        if tag_message.relations:
+        if marker_message.relations:
             group = registry.groups.get(key) if isinstance(registry, Registry) else None
             relations = None if group is None else relations_of(group, label)
-        found = message(key, registry_file, relations, tag_message.pointer)
+        found = message(key, registry_file, relations, marker_message.pointer)
         if found is not None:
             result[(key, label)] = found
     return result

@@ -2,7 +2,7 @@
 
 from coupled.core.registry import Registry, parse
 from coupled.core.rewrite import message, relations_of, wanted, with_messages
-from coupled.core.settings import TagMessage
+from coupled.core.settings import MarkerMessage
 
 REGISTRY = "coupled-registry.toml"
 POINTER = 'Change only with every "COUPLED:upload-limit:" site, per coupled-registry.toml.'
@@ -59,17 +59,17 @@ def test_each_setting_wants_its_own_part_of_the_message() -> None:
         (False, True, "Must be >= app."),
         (True, True, f"Must be >= app. {POINTER}"),
     ):
-        tag_message = TagMessage(pointer=pointer, relations=relations)
+        marker_message = MarkerMessage(pointer=pointer, relations=relations)
         wanted_messages = {} if wanted_message is None else {markers[0]: wanted_message}
-        assert wanted(markers, found, tag_message, REGISTRY) == wanted_messages
+        assert wanted(markers, found, marker_message, REGISTRY) == wanted_messages
 
 
 def test_a_site_with_no_relations_wants_only_the_pointer() -> None:
-    both = TagMessage(pointer=True, relations=True)
+    both = MarkerMessage(pointer=True, relations=True)
     assert wanted([("x", "a")], None, both, REGISTRY) == {
         ("x", "a"): 'Change only with every "COUPLED:x:" site, per coupled-registry.toml.'
     }
-    relations_only = TagMessage(pointer=False, relations=True)
+    relations_only = MarkerMessage(pointer=False, relations=True)
     assert wanted([("x", "a")], None, relations_only, REGISTRY) == {}
 
 

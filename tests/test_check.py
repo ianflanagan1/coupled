@@ -2,18 +2,18 @@
 
 from coupled.core.check import Content, FileRead, Missing, Problem, check, file_sites
 from coupled.core.registry import Registry, parse
-from coupled.core.settings import TagMessage
+from coupled.core.settings import MarkerMessage
 
 REGISTRY = "coupled-registry.toml"
-OFF = TagMessage(pointer=False, relations=False)
-POINTER = TagMessage(pointer=True, relations=False)
+OFF = MarkerMessage(pointer=False, relations=False)
+POINTER = MarkerMessage(pointer=True, relations=False)
 
 
 def problems(
     files: dict[str, str],
     groups: str | None,
     others: dict[str, FileRead],
-    message: TagMessage,
+    message: MarkerMessage,
 ) -> list[Problem]:
     sites = [site for path, text in files.items() for site in file_sites(path, text.splitlines())]
     registry = None if groups is None else parse("version = 1\n" + groups)

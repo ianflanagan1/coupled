@@ -1,15 +1,15 @@
 from coupled.core.settings import (
     REGISTRY_FILE,
     Invalid,
+    MarkerMessage,
     Read,
     Settings,
-    TagMessage,
     Version,
     settings,
 )
 
 WHERE = ".config/coupled.toml"
-OFF = TagMessage(pointer=False, relations=False)
+OFF = MarkerMessage(pointer=False, relations=False)
 
 
 NOT_A_REGISTRY = Invalid(
@@ -102,7 +102,7 @@ def test_markers_show_relations_and_markers_point_to_registry_are_each_turned_on
             found = settings(
                 read({"markers-point-to-registry": pointer, "markers-show-relations": relations})
             )
-            wanted = TagMessage(pointer=pointer, relations=relations)
+            wanted = MarkerMessage(pointer=pointer, relations=relations)
             assert found == Settings([], REGISTRY_FILE, wanted)
 
 

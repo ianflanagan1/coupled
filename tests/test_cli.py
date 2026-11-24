@@ -276,7 +276,7 @@ def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
     assert "Not checked, as they're other repositories: github.com/me/rulebook." in ran.output
 
 
-# --- The tag message
+# --- The marker message
 
 
 def test_fix_writes_the_message_when_the_settings_turn_it_on(sandbox: Sandbox) -> None:

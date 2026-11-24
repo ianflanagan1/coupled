@@ -22,7 +22,7 @@ from coupled.core.relations import (
     refs,
 )
 from coupled.core.rewrite import Wanted, wanted, written_after
-from coupled.core.settings import TagMessage
+from coupled.core.settings import MarkerMessage
 from coupled.core.values import (
     Fails,
     Holds,
@@ -137,7 +137,7 @@ def check(
     registry: Registry | Unparseable | None,
     files: dict[str, FileRead],
     registry_file: str,
-    message: TagMessage,
+    message: MarkerMessage,
 ) -> list[Problem]:
     """The problems with sites and the registry at registry_file, given each file in this
     repository that its groups refer to (see file_paths), and what the settings say follows each
