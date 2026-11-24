@@ -3,7 +3,7 @@
     version = 1
 
     ["COUPLED:upload-limit:"]
-    relations = ["nginx >= app", "nginx = ./limits.json#/upload_mb"]
+    relations = ["proxy >= app", "proxy = ./limits.json#/upload_mb"]
     files = ["./.env?"]
     select = { app = 'MAX_UPLOAD_MB = (\\d+)' }
 

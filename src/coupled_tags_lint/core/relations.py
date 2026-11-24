@@ -3,7 +3,7 @@
 A relation is `<ref> <op> <ref> [<arith> <number>]`, an equation: the first ref's value, by op,
 the second's through the formula. Or it's a bare op, `=`, `same-as` or `same-shape`, alone:
 every site and file of the group is the same. A ref is a site, by its marker's label
-(`nginx`), or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository, or
+(`proxy`), or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository, or
 `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another.
 """
 

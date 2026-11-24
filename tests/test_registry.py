@@ -25,7 +25,7 @@ from coupled_tags_lint.core.relations import (
 TEXT = """version = 1
 
 ["COUPLED:upload-limit:"]
-relations = ["nginx >= app", "nginx = ./limits.json#/upload_mb * 1024"]
+relations = ["proxy >= app", "proxy = ./limits.json#/upload_mb * 1024"]
 files = ["./.env?"]
 select = { app = 'MAX = (\\d+)' }
 """
@@ -38,8 +38,8 @@ def registry(text: str) -> Registry:
 
 
 def test_a_relation_relates_two_sites_by_their_labels() -> None:
-    assert parse_relation("nginx >= app") == Equation(
-        Label("nginx"), ValueOp.GE, Label("app"), None
+    assert parse_relation("proxy >= app") == Equation(
+        Label("proxy"), ValueOp.GE, Label("app"), None
     )
 
 
@@ -53,9 +53,9 @@ def test_a_relation_can_name_a_file_with_a_pointer_in_this_or_another_repository
     assert parse_relation("app = ./package.json#/engines/node") == Equation(
         Label("app"), ValueOp.EQ, FileRef(None, "package.json", False, "/engines/node"), None
     )
-    relation = parse_relation("go same-shape //github.com/o/n/schema.json")
+    relation = parse_relation("writer same-shape //github.com/o/n/schema.json")
     assert relation == Equation(
-        Label("go"),
+        Label("writer"),
         StructuralOp.SAME_SHAPE,
         FileRef("github.com/o/n", "schema.json", False, None),
         None,
@@ -80,7 +80,7 @@ def test_a_relation_with_an_unknown_op_or_a_bad_ref_says_how_to_write_it() -> No
 def test_a_group_s_table_gives_its_relations_files_and_selectors() -> None:
     group = registry(TEXT).groups["upload-limit"]
     assert group.problems == ()
-    assert group.relations[0] == Equation(Label("nginx"), ValueOp.GE, Label("app"), None)
+    assert group.relations[0] == Equation(Label("proxy"), ValueOp.GE, Label("app"), None)
     assert group.files == (FileRef(None, ".env", True, None),)
     assert group.selector("app") == "MAX = (\\d+)"
     assert [ref.text() for ref in group.file_refs()] == ["./.env?", "./limits.json#/upload_mb"]
@@ -106,8 +106,8 @@ def test_a_group_with_no_relations_or_an_unknown_field_is_reported() -> None:
 
 def test_a_change_to_what_a_table_states_changes_its_definition() -> None:
     before = registry(TEXT).groups["upload-limit"].definition
-    reworded = registry(TEXT.replace('"nginx >= app"', '"nginx  >=  app"'))
-    changed = registry(TEXT.replace('"nginx >= app"', '"nginx > app"'))
+    reworded = registry(TEXT.replace('"proxy >= app"', '"proxy  >=  app"'))
+    changed = registry(TEXT.replace('"proxy >= app"', '"proxy > app"'))
     assert reworded.groups["upload-limit"].definition == before
     assert changed.groups["upload-limit"].definition != before
 
@@ -117,7 +117,7 @@ def test_the_reviewed_section_is_written_below_the_groups_and_read_back() -> Non
         "upload-limit": Reviewed(
             "abc",
             (
-                ReviewedSite("COUPLED:upload-limit: nginx", "m", None),
+                ReviewedSite("COUPLED:upload-limit: proxy", "m", None),
                 ReviewedSite("COUPLED:upload-limit: app", None, None),
             ),
         )
@@ -125,13 +125,13 @@ def test_the_reviewed_section_is_written_below_the_groups_and_read_back() -> Non
     text = with_reviewed(TEXT, reviewed)
     assert text.startswith(TEXT)
     assert REVIEWED_HEADER in text
-    assert '"COUPLED:upload-limit: nginx" = { unit = "m" }' in text
+    assert '"COUPLED:upload-limit: proxy" = { unit = "m" }' in text
     assert registry(text).reviewed == {
         "upload-limit": Reviewed(
             "abc",
             (
                 ReviewedSite("COUPLED:upload-limit: app", None, None),
-                ReviewedSite("COUPLED:upload-limit: nginx", "m", None),
+                ReviewedSite("COUPLED:upload-limit: proxy", "m", None),
             ),
         )
     }

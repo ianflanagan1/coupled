@@ -85,13 +85,13 @@ def assert_problem(ran: Ran, text: str) -> None:
 
 # --- Repositories
 
-UPLOAD = ('["COUPLED:upload-limit:"]', 'relations = ["nginx >= app"]')
+UPLOAD = ('["COUPLED:upload-limit:"]', 'relations = ["proxy >= app"]')
 MESSAGE = 'Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.'
 
 
 def upload(sandbox: Sandbox, app_limit: int) -> None:
     sandbox.file("app.py", f"MAX_UPLOAD_MB = {app_limit}  # COUPLED:upload-limit: app")
-    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: nginx")
+    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
     sandbox.registry(*UPLOAD)
 
 
@@ -107,7 +107,7 @@ def test_a_relation_that_fails_is_reported_at_its_site(sandbox: Sandbox) -> None
     upload(sandbox, 12)
     sandbox.review("upload-limit")
     assert_problem(
-        sandbox.lint(), "nginx.conf:1 `nginx >= app` doesn't hold with app.py:1: 10m >= 12"
+        sandbox.lint(), "nginx.conf:1 `proxy >= app` doesn't hold with app.py:1: 10m >= 12"
     )
 
 
@@ -199,7 +199,7 @@ def test_a_setting_the_lint_does_not_know_is_reported(sandbox: Sandbox) -> None:
 
 def test_the_registry_is_the_file_the_settings_file_names(sandbox: Sandbox) -> None:
     sandbox.file("app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app")
-    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: nginx")
+    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
     sandbox.file(".config/coupled.toml", "version = 1", *UPLOAD)
     sandbox.file(SETTINGS, "version = 1", 'registry = ".config/coupled.toml"')
     sandbox.review("upload-limit")
@@ -229,10 +229,10 @@ def test_a_marked_file_that_is_not_utf8_is_reported(sandbox: Sandbox) -> None:
 
 
 def test_a_pointer_into_json_is_checked(sandbox: Sandbox) -> None:
-    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: nginx")
+    sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
     sandbox.file("limits.json", '{"upload_mb": 12}')
     sandbox.registry(
-        '["COUPLED:upload-limit:"]', 'relations = ["nginx >= ./limits.json#/upload_mb"]'
+        '["COUPLED:upload-limit:"]', 'relations = ["proxy >= ./limits.json#/upload_mb"]'
     )
     assert_problem(sandbox.lint(), "doesn't hold with ./limits.json#/upload_mb: 10m >= 12")
 
@@ -253,10 +253,10 @@ def test_a_missing_file_is_reported_unless_it_is_optional(sandbox: Sandbox) -> N
 
 
 def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
-    sandbox.file("a.go", "type listing struct {  // COUPLED:listing-shape: go")
+    sandbox.file("a.go", "type listing struct {  // COUPLED:listing-shape: writer")
     sandbox.registry(
         '["COUPLED:listing-shape:"]',
-        'relations = ["go same-shape //github.com/me/rulebook/schema/coverage.json"]',
+        'relations = ["writer same-shape //github.com/me/rulebook/schema/coverage.json"]',
     )
     sandbox.review("listing-shape")
     ran = sandbox.lint()
@@ -285,7 +285,7 @@ def test_fix_writes_each_site_s_relations_alone_when_the_settings_ask_only_for_t
     sandbox.file(SETTINGS, "version = 1", "tag-relations = true")
     sandbox.lint("--fix", "--update", "upload-limit")
     assert (sandbox.repo / "app.py").read_text() == (
-        "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= nginx.\n"
+        "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy.\n"
     )
     assert_clean(sandbox.lint())
 
@@ -297,10 +297,10 @@ def test_fix_writes_each_site_s_relations_before_the_pointer_when_both_are_on(
     sandbox.file(SETTINGS, "version = 1", "tag-relations = true", "tag-pointer = true")
     sandbox.lint("--fix", "--update", "upload-limit")
     assert (sandbox.repo / "app.py").read_text() == (
-        f"MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= nginx. {MESSAGE}\n"
+        f"MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy. {MESSAGE}\n"
     )
     assert_clean(sandbox.lint())
-    sandbox.registry('["COUPLED:upload-limit:"]', 'relations = ["nginx > app"]')
+    sandbox.registry('["COUPLED:upload-limit:"]', 'relations = ["proxy > app"]')
     assert_problem(sandbox.lint(), "app.py:1 Write the message after this marker's label")
 
 
@@ -323,7 +323,7 @@ def test_update_records_the_groups_in_the_registry(sandbox: Sandbox) -> None:
     assert_clean(ran)
     text = (sandbox.repo / ".coupled-tags.toml").read_text()
     assert '[reviewed."COUPLED:upload-limit:"]' in text
-    assert '"COUPLED:upload-limit: nginx" = { unit = "m" }' in text
+    assert '"COUPLED:upload-limit: proxy" = { unit = "m" }' in text
     assert "Updated .coupled-tags.toml." in ran.output
 
 

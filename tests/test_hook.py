@@ -24,12 +24,12 @@ class Repo:
         self.state.mkdir()
         subprocess.run(["git", "init", "--quiet"], cwd=self.root, check=True)
         self.file("app.py", "import os", MARKED)
-        self.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: nginx")
+        self.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
         self.file(
             ".coupled-tags.toml",
             "version = 1",
             '["COUPLED:upload-limit:"]',
-            'relations = ["nginx >= app"]',
+            'relations = ["proxy >= app"]',
         )
 
     def file(self, name: str, *lines: str) -> None:
@@ -88,7 +88,7 @@ def test_the_gate_stops_the_first_edit_to_a_marked_line_with_its_group(repo: Rep
     reason = str(output["permissionDecisionReason"])
     assert "app.py:2:MAX_UPLOAD_MB = 8" in reason
     assert "nginx.conf:1:client_max_body_size 10m;" in reason
-    assert 'relations = ["nginx >= app"]' in reason
+    assert 'relations = ["proxy >= app"]' in reason
 
 
 def test_the_gate_lets_later_edits_to_the_group_through(repo: Repo) -> None:

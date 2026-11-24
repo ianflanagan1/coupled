@@ -64,7 +64,7 @@ def test_the_gate_reason_lists_each_group_s_sites_and_table() -> None:
     group = Group(
         "upload-limit",
         ["app.py:2:MAX = 8  # COUPLED:upload-limit: app"],
-        '["COUPLED:upload-limit:"]\nrelations = ["nginx >= app"]',
+        '["COUPLED:upload-limit:"]\nrelations = ["proxy >= app"]',
     )
     reason = gate_reason([group], ".coupled-tags.toml")
     assert reason.startswith("This edit touches lines marked COUPLED:upload-limit:")

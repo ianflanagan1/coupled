@@ -5,7 +5,7 @@ Checks the COUPLED groups in a repository: values or code in several places that
 ```
 $ coupled-tags-lint
 ⚠️ 1 problem in COUPLED groups.
-nginx.conf:1 `nginx >= app` doesn't hold with app.py:1: 10m >= 12
+nginx.conf:1 `proxy >= app` doesn't hold with app.py:1: 10m >= 12
 ```
 
 Runs on macOS and Linux. Built on [cli-kit](https://github.com/ianflanagan1/cli-kit).
@@ -13,7 +13,7 @@ Runs on macOS and Linux. Built on [cli-kit](https://github.com/ianflanagan1/cli-
 ## Markers and the registry
 
 ```nginx
-client_max_body_size 10m;  # COUPLED:upload-limit: nginx
+client_max_body_size 10m;  # COUPLED:upload-limit: proxy
 ```
 ```python
 MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app
@@ -23,10 +23,10 @@ MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app
 version = 1
 
 ["COUPLED:upload-limit:"]
-relations = ["nginx >= app", "nginx = ./limits.json#/upload_mb"]
+relations = ["proxy >= app", "proxy = ./limits.json#/upload_mb"]
 ```
 
-A marker's key names its group; its label names this site within the group. A key and a label are lowercase letters and digits, in words joined by single hyphens, and the space between them is part of the form: what to search for to find a group is `COUPLED:<key>:`, which finds each of its sites and its table in the registry, as the table is named the same way. Prose goes before `COUPLED:`, or after the label and a `.`: `COUPLED:upload-limit: nginx. Larger bodies get a 413.`
+A marker's key names its group; its label names this site within the group. A key and a label are lowercase letters and digits, in words joined by single hyphens, and the space between them is part of the form: what to search for to find a group is `COUPLED:<key>:`, which finds each of its sites and its table in the registry, as the table is named the same way. Prose goes before `COUPLED:`, or after the label and a `.`: `COUPLED:upload-limit: proxy. Larger bodies get a 413.`
 
 A marker describes the code before its comment on its line, or for a marker on a comment line, the first line of code after it, past any other comment lines but not a blank line. The lint tells comments from code by the file's own comment syntax, which it knows by the file's extension or name, such as `%` in Erlang and `(* *)` in OCaml; a file of a kind it doesn't know takes the common ones, `#`, `//`, `;`, `--`, `/* */`, `<!-- -->` and `{# #}`. `COUPLED:<key>:END`, in a comment after the last line of a block, closes the nearest marker of its key above it, so that it describes every line down to the END. Blocks of different keys can nest but not overlap.
 
@@ -61,7 +61,7 @@ The lint doesn't read other repositories, since which revision to compare agains
 Relations between values are checked on every run, but structural ops can't be, and a group can lose a site without any relation failing. So `--update <key>` writes, below the groups in the registry, each group it names as it was last reviewed:
 
 - a fingerprint of its table
-- each of its sites, by its marker (`"COUPLED:upload-limit: nginx"`)
+- each of its sites, by its marker (`"COUPLED:upload-limit: proxy"`)
 - in a group using value ops, the unit on each value, since numbers are compared without their units
 - in a group using structural ops, a fingerprint of each site's block, and of each file in this repository the group names
 
@@ -102,9 +102,9 @@ tag-pointer = true
 - `tag-relations` and `tag-pointer`: what follows each marker's label, each `false` by default. `tag-relations` gives the site's own relations as seen from it, so any reader, a person in an editor among them, sees what must hold without opening the registry. `tag-pointer` says what to search for and which file describes the group, for a reader who doesn't know the convention, such as an AI agent without the coupled-tags skill or its hooks; a reader who knows it can do without. With both on, the relations come first. A site no relation names gets no relations. `--fix` writes the message from the registry, or drops it when both are off, and the lint reports one that differs from what `--fix` would write, so it's never stale:
 
   ```python
-  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= nginx.
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy.
   MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
-  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= nginx. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
   ```
 
 The file is optional. The lint reads the copy on disk in the directory it scans, so a branch that adds fixtures can exclude them in the same change. A file that isn't valid TOML, has no `version` or one the lint doesn't read, holds a setting it doesn't know, or names a registry outside the repository stops the run with `⚠️` and exit status 1, before anything is changed. It's read with [repo-settings](https://github.com/ianflanagan1/repo-settings), and its schema is in `schema/`.

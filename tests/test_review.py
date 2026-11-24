@@ -8,7 +8,7 @@ REGISTRY = ".coupled-tags.toml"
 
 VALUES = """version = 1
 ["COUPLED:upload-limit:"]
-relations = ["nginx >= app"]
+relations = ["proxy >= app"]
 """
 
 STRUCTURE = """version = 1
@@ -38,7 +38,7 @@ def differences(
 
 
 UPLOAD = {
-    "nginx.conf": "client_max_body_size 10m;  # COUPLED:upload-limit: nginx",
+    "nginx.conf": "client_max_body_size 10m;  # COUPLED:upload-limit: proxy",
     "app.py": "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app",
 }
 
@@ -53,12 +53,12 @@ def test_a_group_as_it_was_reviewed_has_no_differences() -> None:
 
 
 def test_a_value_changed_within_its_unit_is_left_to_the_relations() -> None:
-    after = {**UPLOAD, "nginx.conf": "client_max_body_size 20m;  # COUPLED:upload-limit: nginx"}
+    after = {**UPLOAD, "nginx.conf": "client_max_body_size 20m;  # COUPLED:upload-limit: proxy"}
     assert differences(UPLOAD, after, VALUES, VALUES) == []
 
 
 def test_a_unit_changed_is_reported() -> None:
-    after = {**UPLOAD, "nginx.conf": "client_max_body_size 10k;  # COUPLED:upload-limit: nginx"}
+    after = {**UPLOAD, "nginx.conf": "client_max_body_size 10k;  # COUPLED:upload-limit: proxy"}
     [problem] = differences(UPLOAD, after, VALUES, VALUES)
     assert problem.startswith("nginx.conf:1 Its unit has changed from `m` to `k`")
 

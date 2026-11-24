@@ -14,8 +14,8 @@ def test_a_label_can_be_several_words_joined_by_hyphens() -> None:
 
 
 def test_prose_can_follow_a_label_after_a_full_stop() -> None:
-    assert found("# COUPLED:upload-limit: nginx. Larger bodies get a 413.") == [
-        Marker("upload-limit", "nginx", ())
+    assert found("# COUPLED:upload-limit: proxy. Larger bodies get a 413.") == [
+        Marker("upload-limit", "proxy", ())
     ]
 
 
@@ -37,8 +37,8 @@ def test_a_marker_without_a_label_asks_for_one() -> None:
 
 
 def test_prose_straight_after_a_label_asks_for_a_full_stop_between() -> None:
-    [marker] = found("# COUPLED:upload-limit: nginx answers with a 413")
-    assert isinstance(marker, Marker) and marker.label == "nginx"
+    [marker] = found("# COUPLED:upload-limit: proxy answers with a 413")
+    assert isinstance(marker, Marker) and marker.label == "proxy"
     assert "End the label with `.`" in marker.problems[0]
 
 

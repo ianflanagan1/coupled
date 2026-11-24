@@ -26,11 +26,11 @@ def messages_of(found: list[Problem]) -> list[str]:
 
 UPLOAD = """
 ["COUPLED:upload-limit:"]
-relations = ["nginx >= app"]
+relations = ["proxy >= app"]
 """
 
 UPLOAD_FILES = {
-    "nginx.conf": "client_max_body_size 10m;  # COUPLED:upload-limit: nginx",
+    "nginx.conf": "client_max_body_size 10m;  # COUPLED:upload-limit: proxy",
     "app.py": "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app",
 }
 
@@ -47,7 +47,7 @@ def test_a_relation_that_does_not_hold_is_reported_at_its_first_site() -> None:
         OFF,
     )
     assert messages_of(found) == [
-        "nginx.conf:1 `nginx >= app` doesn't hold with app.py:1: 10m >= 12. Change the values "
+        "nginx.conf:1 `proxy >= app` doesn't hold with app.py:1: 10m >= 12. Change the values "
         "so it holds; change the relation only if what must hold has changed"
     ]
 
@@ -105,7 +105,7 @@ def test_a_bare_op_relates_every_site_and_file() -> None:
 
 
 def test_a_file_s_value_is_read_at_its_pointer() -> None:
-    groups = '["COUPLED:upload-limit:"]\nrelations = ["nginx = ./limits.json#/upload_mb"]\n'
+    groups = '["COUPLED:upload-limit:"]\nrelations = ["proxy = ./limits.json#/upload_mb"]\n'
     files = {"nginx.conf": UPLOAD_FILES["nginx.conf"]}
     assert problems(files, groups, {"limits.json": Content('{"upload_mb": 10}')}, OFF) == []
     found = problems(files, groups, {"limits.json": Content('{"upload_mb": 5}')}, OFF)
@@ -132,13 +132,13 @@ def test_a_group_with_one_member_is_reported() -> None:
 
 
 def test_a_group_mixing_value_and_structural_ops_is_reported() -> None:
-    groups = '["COUPLED:upload-limit:"]\nrelations = ["nginx >= app", "app same-as nginx"]\n'
+    groups = '["COUPLED:upload-limit:"]\nrelations = ["proxy >= app", "app same-as proxy"]\n'
     found = problems(UPLOAD_FILES, groups, {}, OFF)
     assert any("either value ops or structural ops" in m for m in messages_of(found))
 
 
 def test_relating_two_sites_twice_is_reported() -> None:
-    groups = '["COUPLED:upload-limit:"]\nrelations = ["nginx >= app", "app <= nginx"]\n'
+    groups = '["COUPLED:upload-limit:"]\nrelations = ["proxy >= app", "app <= proxy"]\n'
     found = problems(UPLOAD_FILES, groups, {}, OFF)
     assert any("in only one relation" in m for m in messages_of(found))
 

@@ -6,7 +6,7 @@ from coupled_tags_lint.core.settings import TagMessage
 
 REGISTRY = ".coupled-tags.toml"
 POINTER = 'Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.'
-UPLOAD = {("upload-limit", "app"): POINTER, ("upload-limit", "nginx"): POINTER}
+UPLOAD = {("upload-limit", "app"): POINTER, ("upload-limit", "proxy"): POINTER}
 
 
 def registry(groups: str) -> Registry:
@@ -51,8 +51,8 @@ def test_structural_ops_flip_from_the_other_side() -> None:
 
 
 def test_each_setting_wants_its_own_part_of_the_message() -> None:
-    found = registry('["COUPLED:upload-limit:"]\nrelations = ["nginx >= app"]\n')
-    markers = [("upload-limit", "nginx")]
+    found = registry('["COUPLED:upload-limit:"]\nrelations = ["proxy >= app"]\n')
+    markers = [("upload-limit", "proxy")]
     for pointer, relations, wanted_message in (
         (False, False, None),
         (True, False, POINTER),
@@ -84,7 +84,7 @@ def test_a_message_already_written_is_left_as_it_is() -> None:
 
 
 def test_a_message_that_differs_is_rewritten() -> None:
-    relations = f"Must be <= nginx. {POINTER}"
+    relations = f"Must be <= proxy. {POINTER}"
     lines = [f"MAX = 8  # COUPLED:upload-limit: app. {POINTER}"]
     assert with_messages(lines, {("upload-limit", "app"): relations}) == [
         f"MAX = 8  # COUPLED:upload-limit: app. {relations}"
@@ -95,7 +95,7 @@ def test_a_message_that_differs_is_rewritten() -> None:
 
 
 def test_a_relations_only_message_is_rewritten_and_dropped() -> None:
-    lines = ["MAX = 8  # COUPLED:upload-limit: app. Must be <= nginx. Larger is refused."]
+    lines = ["MAX = 8  # COUPLED:upload-limit: app. Must be <= proxy. Larger is refused."]
     assert with_messages(lines, UPLOAD) == [
         f"MAX = 8  # COUPLED:upload-limit: app. {POINTER} Larger is refused."
     ]
@@ -108,9 +108,9 @@ def test_prose_starting_must_be_is_not_taken_for_a_message() -> None:
 
 
 def test_the_message_goes_before_prose_after_the_label() -> None:
-    lines = ["# COUPLED:upload-limit: nginx. Larger bodies get a 413."]
+    lines = ["# COUPLED:upload-limit: proxy. Larger bodies get a 413."]
     assert with_messages(lines, UPLOAD) == [
-        f"# COUPLED:upload-limit: nginx. {POINTER} Larger bodies get a 413."
+        f"# COUPLED:upload-limit: proxy. {POINTER} Larger bodies get a 413."
     ]
 
 
@@ -122,11 +122,11 @@ def test_the_message_goes_before_a_block_comment_s_closer() -> None:
 def test_a_message_not_wanted_is_dropped_and_prose_after_it_kept() -> None:
     lines = [
         f"MAX = 8  # COUPLED:upload-limit: app. {POINTER}",
-        f"# COUPLED:upload-limit: nginx. {POINTER} Larger bodies get a 413.",
+        f"# COUPLED:upload-limit: proxy. {POINTER} Larger bodies get a 413.",
     ]
     assert with_messages(lines, {}) == [
         "MAX = 8  # COUPLED:upload-limit: app",
-        "# COUPLED:upload-limit: nginx. Larger bodies get a 413.",
+        "# COUPLED:upload-limit: proxy. Larger bodies get a 413.",
     ]
 
 
