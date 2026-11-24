@@ -26,7 +26,7 @@ class Repo:
         self.file("app.py", "import os", MARKED)
         self.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
         self.file(
-            ".coupled-tags.toml",
+            "coupled-tags-registry.toml",
             "version = 1",
             '["COUPLED:upload-limit:"]',
             'relations = ["proxy >= app"]',
@@ -127,7 +127,7 @@ def test_each_session_is_shown_a_group_once(repo: Repo) -> None:
 
 def test_files_the_settings_exclude_are_left_alone(repo: Repo) -> None:
     repo.file("docs/example.md", "COUPLED:upload-limit: example")
-    repo.file(".config/ianf-coupled-tags.toml", "version = 1", 'exclude = ["docs"]')
+    repo.file(".config/coupled-tags.toml", "version = 1", 'exclude = ["docs"]')
     assert repo.read("s1", "docs/example.md") is None
     assert "docs/example.md" not in str(_output(repo.read("s2", "app.py"))["additionalContext"])
 
@@ -140,7 +140,7 @@ def test_files_holding_the_ignore_directive_are_left_alone(repo: Repo) -> None:
 
 
 def test_the_registry_itself_is_left_alone(repo: Repo) -> None:
-    assert repo.read("s1", ".coupled-tags.toml") is None
+    assert repo.read("s1", "coupled-tags-registry.toml") is None
 
 
 def test_other_tools_and_events_pass_silently(repo: Repo) -> None:

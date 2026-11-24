@@ -4,7 +4,7 @@ from coupled_tags_lint.core.check import Content, FileRead, Site, file_sites
 from coupled_tags_lint.core.registry import Registry, parse
 from coupled_tags_lint.core.review import compare, current, reviewed
 
-REGISTRY = ".coupled-tags.toml"
+REGISTRY = "coupled-tags-registry.toml"
 
 VALUES = """version = 1
 ["COUPLED:upload-limit:"]
@@ -107,7 +107,7 @@ def test_an_edited_file_a_structural_group_names_is_reported() -> None:
 def test_a_group_never_reviewed_is_reported_at_its_table() -> None:
     now = current(sites(UPLOAD), registry(VALUES), {})
     [problem] = compare({}, now, REGISTRY)
-    assert problem.where == '.coupled-tags.toml ["COUPLED:upload-limit:"]'
+    assert problem.where == 'coupled-tags-registry.toml ["COUPLED:upload-limit:"]'
     assert "hasn't been reviewed" in problem.message
 
 

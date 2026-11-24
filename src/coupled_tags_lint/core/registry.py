@@ -1,4 +1,5 @@
-"""The registry: a repository's record of its COUPLED groups, `.coupled-tags.toml` by default.
+"""The registry: a repository's record of its COUPLED groups, `coupled-tags-registry.toml` by
+default.
 
     version = 1
 

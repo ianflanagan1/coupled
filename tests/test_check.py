@@ -4,7 +4,7 @@ from coupled_tags_lint.core.check import Content, FileRead, Missing, Problem, ch
 from coupled_tags_lint.core.registry import Registry, parse
 from coupled_tags_lint.core.settings import TagMessage
 
-REGISTRY = ".coupled-tags.toml"
+REGISTRY = "coupled-tags-registry.toml"
 OFF = TagMessage(pointer=False, relations=False)
 POINTER = TagMessage(pointer=True, relations=False)
 
@@ -187,7 +187,7 @@ def test_with_messages_on_a_marker_without_its_message_is_reported() -> None:
     assert all("--fix does it" in p.message for p in found)
     written = {
         path: text
-        + '. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.'
+        + '. Change only with every "COUPLED:upload-limit:" site, per coupled-tags-registry.toml.'
         for path, text in UPLOAD_FILES.items()
     }
     assert problems(written, UPLOAD, {}, POINTER) == []
@@ -197,7 +197,7 @@ def test_with_messages_off_a_marker_with_a_message_is_reported() -> None:
     written = {
         **UPLOAD_FILES,
         "app.py": UPLOAD_FILES["app.py"]
-        + '. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.',
+        + '. Change only with every "COUPLED:upload-limit:" site, per coupled-tags-registry.toml.',
     }
     [problem] = problems(written, UPLOAD, {}, OFF)
     assert problem.where == "app.py:1" and "--fix does it" in problem.message

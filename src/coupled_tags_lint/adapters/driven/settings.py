@@ -1,10 +1,10 @@
 """Reading a repository's settings file from the local disk with repo-settings, which finds
-.config/ianf-coupled-tags.toml and checks its version."""
+.config/coupled-tags.toml and checks its version."""
 
 from pathlib import Path
 from typing import assert_never, final
 
-from coupled_tags_lint.core.settings import PURPOSE, Invalid, Read, Version
+from coupled_tags_lint.core.settings import FILE, Invalid, Read, Version
 
 
 @final
@@ -16,7 +16,7 @@ class LocalSettings:
         # markers, doesn't pay for loading repo-settings and tomlkit.
         import repo_settings
 
-        found = repo_settings.read_file(Path(root) / repo_settings.location(PURPOSE), Version)
+        found = repo_settings.read_file(Path(root) / FILE, Version)
         match found:
             case repo_settings.Settings():
                 return Read(found.version, found.table, found.where)

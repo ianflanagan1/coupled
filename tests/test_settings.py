@@ -8,7 +8,7 @@ from coupled_tags_lint.core.settings import (
     settings,
 )
 
-WHERE = ".config/ianf-coupled-tags.toml"
+WHERE = ".config/coupled-tags.toml"
 OFF = TagMessage(pointer=False, relations=False)
 
 
@@ -65,7 +65,7 @@ def test_an_empty_excluded_path_is_invalid() -> None:
 
 def test_a_file_that_names_no_registry_uses_the_registry_at_the_root() -> None:
     found = settings(read({"exclude": ["docs"]}))
-    assert found == Settings(["docs"], ".coupled-tags.toml", OFF)
+    assert found == Settings(["docs"], "coupled-tags-registry.toml", OFF)
 
 
 def test_the_path_under_registry_is_the_registry() -> None:

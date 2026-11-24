@@ -1,6 +1,6 @@
 # coupled-tags-lint
 
-Checks the COUPLED groups in a repository: values or code in several places that must change together but can't share a single source of truth. Each place carries a marker, `COUPLED:<key>: <label>`, and the repository's registry, `.coupled-tags.toml`, describes each group: how its sites relate, and the files in it that can't hold a marker. The lint checks that markers and registry agree, that the relations between values hold, and that no group has changed since it was last reviewed. It also gives Claude Code two hooks that show Claude a group before it edits one of its sites. The convention, and the Claude Code skill that goes with it, are in [coupled-tags](https://github.com/ianflanagan1/coupled-tags).
+Checks the COUPLED groups in a repository: values or code in several places that must change together but can't share a single source of truth. Each place carries a marker, `COUPLED:<key>: <label>`, and the repository's registry, `coupled-tags-registry.toml`, describes each group: how its sites relate, and the files in it that can't hold a marker. The lint checks that markers and registry agree, that the relations between values hold, and that no group has changed since it was last reviewed. It also gives Claude Code two hooks that show Claude a group before it edits one of its sites. The convention, and the Claude Code skill that goes with it, are in [coupled-tags](https://github.com/ianflanagan1/coupled-tags).
 
 ```
 $ coupled-tags-lint
@@ -19,7 +19,7 @@ client_max_body_size 10m;  # COUPLED:upload-limit: proxy
 MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app
 ```
 ```toml
-# .coupled-tags.toml
+# coupled-tags-registry.toml
 version = 1
 
 ["COUPLED:upload-limit:"]
@@ -87,10 +87,10 @@ In a git work tree it scans tracked files plus untracked files that aren't ignor
 
 ## Settings
 
-A repository sets the paths to exclude on every run, where its registry is, and whether markers carry a message, in `.config/ianf-coupled-tags.toml`, committed with its code:
+A repository sets the paths to exclude on every run, where its registry is, and whether markers carry a message, in `.config/coupled-tags.toml`, committed with its code:
 
 ```toml
-#:schema https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/ianf-coupled-tags.v1.json
+#:schema https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/coupled-tags.v1.json
 version = 1
 exclude = ["docs", "tests/fixtures"]
 registry = ".config/coupled.toml"
@@ -100,13 +100,13 @@ tag-pointer = true
 
 - `version`: the version of the file's format, which is 1.
 - `exclude`: path prefixes, relative to the directory scanned, whose markers aren't checked, such as examples and test fixtures. None by default.
-- `registry`: the registry's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `.coupled-tags.toml` by default. The lint doesn't move a registry: when you change this, move the file too.
+- `registry`: the registry's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `coupled-tags-registry.toml` by default. The lint doesn't move a registry: when you change this, move the file too.
 - `tag-relations` and `tag-pointer`: what follows each marker's label, each `false` by default. `tag-relations` gives the site's own relations as seen from it, so any reader, a person in an editor among them, sees what must hold without opening the registry. `tag-pointer` says what to search for and which file describes the group, for a reader who doesn't know the convention, such as an AI agent without the coupled-tags skill or its hooks; a reader who knows it can do without. With both on, the relations come first. A site no relation names gets no relations. `--fix` writes the message from the registry, or drops it when both are off, and the lint reports one that differs from what `--fix` would write, so it's never stale:
 
   ```python
   MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy.
-  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
-  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy. Change only with every "COUPLED:upload-limit:" site, per .coupled-tags.toml.
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Change only with every "COUPLED:upload-limit:" site, per coupled-tags-registry.toml.
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy. Change only with every "COUPLED:upload-limit:" site, per coupled-tags-registry.toml.
   ```
 
 The file is optional. The lint reads the copy on disk in the directory it scans, so a branch that adds fixtures can exclude them in the same change. A file that isn't valid TOML, has no `version` or one the lint doesn't read, holds a setting it doesn't know, or names a registry outside the repository stops the run with `⚠️` and exit status 1, before anything is changed. It's read with [repo-settings](https://github.com/ianflanagan1/repo-settings), and its schema is in `schema/`.

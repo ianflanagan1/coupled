@@ -1,8 +1,8 @@
-"""A repository's settings for its COUPLED tags, committed as .config/ianf-coupled-tags.toml:
+"""A repository's settings for its COUPLED tags, committed as .config/coupled-tags.toml:
 
     version = 1                        # the version of the file's format: see schema/
     exclude = ["README.md", "tests"]   # path prefixes whose markers aren't checked; none by default
-    registry = ".config/coupled.toml"  # the registry; .coupled-tags.toml by default
+    registry = ".config/coupled.toml"  # the registry; coupled-tags-registry.toml by default
     tag-pointer = true                 # say where each label's group is: off by default
     tag-relations = true               # give each label's relations: off by default
 
@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import assert_never, final
 
-PURPOSE = "coupled-tags"
+FILE = ".config/coupled-tags.toml"
 
 # The registry's path from the repository's root, unless the settings name another.
-REGISTRY_FILE = ".coupled-tags.toml"
+REGISTRY_FILE = "coupled-tags-registry.toml"
 
 _KNOWN = ("exclude", "registry", "tag-pointer", "tag-relations")
 
@@ -36,7 +36,7 @@ class TagMessage:
 
 
 class Version(IntEnum):
-    """The versions of ianf-coupled-tags.toml's format the lint reads."""
+    """The versions of coupled-tags.toml's format the lint reads."""
 
     V1 = 1
 

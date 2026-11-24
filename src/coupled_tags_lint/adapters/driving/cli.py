@@ -29,7 +29,7 @@ structural op relates. A table changed, a site added or removed, a unit changed
 or a block edited is reported until the group is reviewed and recorded with
 --update <key>, which names each group it records.
 
-<dir>/.config/ianf-coupled-tags.toml, if it's there, sets beside version = 1 the
+<dir>/.config/coupled-tags.toml, if it's there, sets beside version = 1 the
 path prefixes to exclude on every run, as exclude = ["docs", "tests"], the
 registry, as registry = ".config/coupled.toml", and what follows each marker's
 label: tag-relations = true for the site's own relations, and tag-pointer = true
