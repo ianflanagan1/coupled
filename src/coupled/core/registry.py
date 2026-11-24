@@ -231,7 +231,8 @@ def with_reviewed(text: str, reviewed: dict[str, Reviewed]) -> str:
     lines = text.splitlines()
     cut = len(lines)
     for index, line in enumerate(lines):
-        if line.strip() == REVIEWED_HEADER or line.startswith("[reviewed."):
+        header = _header(line)
+        if line.strip() == REVIEWED_HEADER or (header is not None and "reviewed" in header):
             cut = index
             break
     authored = "\n".join(lines[:cut]).rstrip() + "\n"
@@ -255,20 +256,33 @@ def with_reviewed(text: str, reviewed: dict[str, Reviewed]) -> str:
 
 
 def entry_text(text: str, key: str) -> str | None:
-    """The lines of key's table in the registry text, as written, or None if it has none."""
+    """The lines of key's table in the registry text, as written, or None if it has none. Its
+    header may be written any way TOML allows, and it ends at the next header or the reviewed
+    section's."""
     lines = text.splitlines()
-    header = table_name(key)
-    start = next((n for n, line in enumerate(lines) if line.strip() == header), None)
+    table = {f"COUPLED:{key}:": {}}
+    start = next((n for n, line in enumerate(lines) if _header(line) == table), None)
     if start is None:
         return None
     end = start + 1
     while (
-        end < len(lines)
-        and not lines[end].startswith("[")
-        and (lines[end].strip() != REVIEWED_HEADER)
+        end < len(lines) and _header(lines[end]) is None and lines[end].strip() != REVIEWED_HEADER
     ):
         end += 1
     return "\n".join(lines[start:end]).rstrip()
+
+
+def _header(line: str) -> dict[str, object] | None:
+    """What a line declares if it's a table header, as TOML reads it alone (`["COUPLED:a:"]` is
+    `{"COUPLED:a:": {}}`), or None if it isn't one. TOML puts a header on a line of its own, so
+    the parser reads it however it's quoted, spaced or commented. A line inside a multi-line
+    string that reads as a header is taken for one."""
+    if not line.lstrip().startswith("["):
+        return None
+    try:
+        return tomllib.loads(line)
+    except tomllib.TOMLDecodeError:
+        return None
 
 
 def _fingerprint(lines: list[str]) -> str:

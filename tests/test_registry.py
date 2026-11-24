@@ -173,3 +173,38 @@ def test_a_group_s_entry_is_its_table_as_written() -> None:
     assert entry.startswith('["COUPLED:upload-limit:"]')
     assert entry.endswith("select = { app = 'MAX = (\\d+)' }")
     assert entry_text(text, "other") is None
+
+
+def test_a_group_s_entry_is_found_however_toml_lets_its_header_be_written() -> None:
+    for header in (
+        "['COUPLED:upload-limit:']",
+        '[ "COUPLED:upload-limit:" ]',
+        '  ["COUPLED:upload-limit:"]',
+        '["COUPLED:upload-limit:"]  # proxy and app',
+        '["COUPLED:upload\\u002dlimit:"]',
+    ):
+        text = f'version = 1\n\n{header}\nrelations = ["proxy = app"]\n'
+        assert entry_text(text, "upload-limit") == f'{header}\nrelations = ["proxy = app"]'
+
+
+def test_a_group_s_entry_ends_at_the_next_table_however_it_is_written() -> None:
+    text = (
+        "version = 1\n\n"
+        '["COUPLED:a:"]\nrelations = [\n    "x = y",\n]\n\n'
+        "  [ 'COUPLED:b:' ]  # next\n"
+        'relations = ["="]\n'
+    )
+    assert entry_text(text, "a") == '["COUPLED:a:"]\nrelations = [\n    "x = y",\n]'
+
+
+def test_a_group_s_entry_is_not_a_table_nested_under_it_or_an_array_of_tables() -> None:
+    text = 'version = 1\n\n[reviewed."COUPLED:a:"]\ndefinition = "x"\n\n[["COUPLED:b:"]]\n'
+    assert entry_text(text, "a") is None
+    assert entry_text(text, "b") is None
+
+
+def test_writing_the_reviewed_section_replaces_one_however_its_headers_are_written() -> None:
+    once = TEXT + "\n[ reviewed . 'COUPLED:x:' ]\ndefinition = 'a'\n"
+    twice = with_reviewed(once, {"y": Reviewed("b", ())})
+    assert "COUPLED:x:" not in twice
+    assert registry(twice).reviewed == {"y": Reviewed("b", ())}
