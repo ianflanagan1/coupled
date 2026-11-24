@@ -1,9 +1,9 @@
 version = 1
 
 ["COUPLED:upload-limit:"]
-relations = ["nginx >= app", "form = app", "app = ./config/limits.json#/upload_mb"]
+relations = ["cdn >= nginx", "nginx >= app", "form = app", "app = ./config/limits.json#/upload_mb"]
 select = { form = 'data-max-mb="(\d+)"' }
-why = "nginx rejects a larger body with a 413 before the app sees it, and the form and the API's limits tell users the app's limit"
+why = "Cloudflare and then nginx reject a larger body with a 413 before the app sees it, and the form and the API's limits tell users the app's limit"
 
 ["COUPLED:request-timeout:"]
 relations = ["proxy >= app + 5"]
@@ -106,8 +106,9 @@ definition = "f5f533399488fa75"
 "COUPLED:upload-columns: table" = {}
 
 [reviewed."COUPLED:upload-limit:"]
-definition = "a51b7f8ac418f130"
+definition = "4f2e8973754b7203"
 "COUPLED:upload-limit: app" = {}
+"COUPLED:upload-limit: cdn" = {}
 "COUPLED:upload-limit: form" = {}
 "COUPLED:upload-limit: nginx" = { unit = "m" }
 

@@ -54,6 +54,8 @@ When only part of what two sites share can be compared, relate them twice, with 
 
 A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no marker. A group in two repositories names the other's files with `//`; each repository's registry describes its own side.
 
+A setting kept in no repository at all, such as one made in a cloud console or a provider's dashboard, has no file to mark. Record its current value in `docs/external/<service>.md`, backticked on a marked line, and that doc is its site: the lint compares the value there with the rest of the group, but can't tell whether the dashboard still matches it. [examples/demo](examples/demo) records Cloudflare's upload limit this way, in [docs/external/cloudflare.md](examples/demo/docs/external/cloudflare.md), as the `cdn` site of `upload-limit`.
+
 ## What it reports
 
 - **markers:** a key or label not in lowercase words joined by hyphens, a marker with no label, prose straight after a label with no `.` between, a tag in the old bracket form, and a marker with no line of code after it
