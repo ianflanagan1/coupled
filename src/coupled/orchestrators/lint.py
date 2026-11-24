@@ -19,6 +19,7 @@ from coupled.core.check import (
     file_paths,
     file_sites,
     markers,
+    no_file_sites,
     unchecked,
 )
 from coupled.core.markers import Marker
@@ -56,6 +57,8 @@ class Report:
     keys: list[tuple[str, list[str]]]
     # The repositories groups refer to files in, which weren't checked.
     unchecked: list[str]
+    # The sites in no file, as `<key> <label>`, which weren't checked.
+    no_file_sites: list[str]
     # The files --fix rewrote markers in.
     fixed: list[str]
     # Whether --update changed the registry.
@@ -125,7 +128,13 @@ class Lint:
             if isinstance(site.found, Marker):
                 keys.setdefault(site.found.key, []).append(site.where)
         return Report(
-            problems, list(keys.items()), unchecked(registry), fixed, updated, found.registry_file
+            problems,
+            list(keys.items()),
+            unchecked(registry),
+            no_file_sites(registry),
+            fixed,
+            updated,
+            found.registry_file,
         )
 
     def _gather(self, root: str, excludes: list[str], found: Settings) -> _Gathered:

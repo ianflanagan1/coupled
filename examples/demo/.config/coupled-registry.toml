@@ -5,6 +5,11 @@ relations = ["cdn >= nginx", "nginx >= app", "form = app", "app = ./config/limit
 select = { form = 'data-max-mb="(\d+)"' }
 why = "Cloudflare and then nginx reject a larger body with a 413 before the app sees it, and the form and the API's limits tell users the app's limit"
 
+["COUPLED:oauth-redirect:"]
+relations = ["app = google"]
+has-no-file = { google = "Google Cloud console > APIs & Services > Credentials > the web client > Authorised redirect URIs" }
+why = "Google refuses to send a user back to a URI the client doesn't list"
+
 ["COUPLED:request-timeout:"]
 relations = ["proxy >= app + 5"]
 why = "nginx must wait longer than the app, so the app's own timeout error reaches the client rather than a 504"
@@ -75,6 +80,10 @@ definition = "0b62cf14bb9403c1"
 "COUPLED:node-version: ci" = {}
 "COUPLED:node-version: docker" = {}
 "COUPLED:node-version: release" = {}
+
+[reviewed."COUPLED:oauth-redirect:"]
+definition = "af2772f3200a02a6"
+"COUPLED:oauth-redirect: app" = {}
 
 [reviewed."COUPLED:port:"]
 definition = "07b3ccec236290ec"

@@ -238,3 +238,35 @@ def test_writing_the_reviewed_section_replaces_one_however_its_headers_are_writt
     twice = with_reviewed(once, {"y": Reviewed("b", ())})
     assert "COUPLED:x:" not in twice
     assert registry(twice).reviewed == {"y": Reviewed("b", ())}
+
+
+def test_a_group_s_table_names_where_each_site_with_no_file_is_set() -> None:
+    group = registry(
+        'version = 1\n["COUPLED:o:"]\nrelations = ["app = google"]\n'
+        'has-no-file = { google = "Google Cloud console > Credentials" }\n'
+    ).groups["o"]
+    assert group.no_file_sites == (("google", "Google Cloud console > Credentials"),)
+    assert group.problems == ()
+
+
+def test_a_site_with_no_file_not_named_by_a_label_or_not_described_is_reported() -> None:
+    group = registry(
+        'version = 1\n["COUPLED:o:"]\nrelations = ["app = google"]\n'
+        'has-no-file = { Google = "console", google = " " }\n'
+    ).groups["o"]
+    assert group.problems == (
+        "Name each site in `has-no-file` by a label, in lowercase letters and digits joined "
+        "by single hyphens: `Google` isn't one",
+        'Say where `google` is set, as `has-no-file = { google = "<where>" }`',
+    )
+
+
+def test_adding_a_site_with_no_file_changes_the_definition_but_rewording_where_does_not() -> None:
+    def definition(no_file: str) -> str:
+        text = f'version = 1\n["COUPLED:o:"]\nrelations = ["="]\n{no_file}\n'
+        return registry(text).groups["o"].definition
+
+    assert definition("") != definition('has-no-file = { google = "console" }')
+    assert definition('has-no-file = { google = "console" }') == definition(
+        'has-no-file = { google = "Google Cloud console" }'
+    )

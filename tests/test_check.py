@@ -1,6 +1,14 @@
 """The checks of a repository's groups, given its files as text and its registry."""
 
-from coupled.core.check import Content, FileRead, Missing, Problem, check, file_sites
+from coupled.core.check import (
+    Content,
+    FileRead,
+    Missing,
+    Problem,
+    check,
+    file_sites,
+    no_file_sites,
+)
 from coupled.core.registry import Registry, parse
 from coupled.core.settings import MarkerMessage
 
@@ -387,3 +395,54 @@ def test_markers_alone_are_checked_even_without_a_registry() -> None:
     sites = file_sites("a.py", ["# COUPLED:x:[= Y]"])
     assert any("registry" in p.message for p in check(sites, None, {}, REGISTRY, OFF))
     assert isinstance(parse("version = 1\n"), Registry)
+
+
+GOOGLE = """
+["COUPLED:oauth-redirect:"]
+relations = ["app = google"]
+has-no-file = { google = "Google Cloud console > Credentials > Authorised redirect URIs" }
+"""
+
+REDIRECT = {"app.py": 'URI = "https://x.example/cb"  # COUPLED:oauth-redirect: app'}
+
+
+def test_a_site_with_no_file_needs_no_marker_and_is_not_compared() -> None:
+    assert problems(REDIRECT, GOOGLE, {}, OFF) == []
+
+
+def test_a_site_with_no_file_counts_toward_the_group_s_two_members() -> None:
+    groups = '["COUPLED:v:"]\nrelations = ["="]\nhas-no-file = { console = "a dashboard" }\n'
+    assert problems({"a.txt": "X = 1  # COUPLED:v: a"}, groups, {}, OFF) == []
+
+
+def test_a_site_with_no_file_that_is_also_marked_is_reported() -> None:
+    files = {
+        **REDIRECT,
+        "doc.md": "URI: `https://x.example/cb` <!-- COUPLED:oauth-redirect: google -->",
+    }
+    found = problems(files, GOOGLE, {}, OFF)
+    assert messages_of(found) == [
+        'coupled-registry.toml ["COUPLED:oauth-redirect:"] Drop `google` from `has-no-file`: '
+        "doc.md:1 marks it, so that's its site"
+    ]
+
+
+def test_a_site_with_no_file_that_nothing_relates_is_reported() -> None:
+    groups = UPLOAD + 'has-no-file = { cdn = "the CDN\'s dashboard" }\n'
+    found = problems(UPLOAD_FILES, groups, {}, OFF)
+    assert messages_of(found) == [
+        'coupled-registry.toml ["COUPLED:upload-limit:"] Nothing relates `cdn`, '
+        'which has no file: name it in a relation of ["COUPLED:upload-limit:"]'
+    ]
+
+
+def test_a_selector_for_a_site_with_no_file_is_reported() -> None:
+    groups = GOOGLE + "select = { google = '(.*)' }\n"
+    found = problems(REDIRECT, groups, {}, OFF)
+    assert any("Drop `google` from `select`" in m for m in messages_of(found))
+
+
+def test_sites_with_no_file_are_listed_as_not_checked() -> None:
+    parsed = parse("version = 1\n" + GOOGLE)
+    assert isinstance(parsed, Registry)
+    assert no_file_sites(parsed) == ["oauth-redirect google"]

@@ -106,6 +106,8 @@ def _show(report: Report | Invalid, list_keys: bool) -> Done | NothingToDo:
         summary = "No COUPLED markers."
     if report.unchecked:
         summary += f" Not checked, as they're other repositories: {', '.join(report.unchecked)}."
+    if report.no_file_sites:
+        summary += f" Not checked, as they have no file: {', '.join(report.no_file_sites)}."
     if changes:
         return Done(" ".join(changes), summary)
     return NothingToDo(summary)

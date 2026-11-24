@@ -4,17 +4,21 @@ default.
     version = 1
 
     ["COUPLED:upload-limit:"]
-    relations = ["proxy >= app", "proxy = ./limits.json#/upload_mb"]
+    relations = ["cdn >= proxy", "proxy >= app", "proxy = ./limits.json#/upload_mb"]
     files = ["./.env?"]
     select = { app = 'MAX_UPLOAD_MB = (\\d+)' }
+    has-no-file = { cdn = "the CDN's dashboard > Network > Maximum Upload Size" }
 
 Each group is a table named as the marker's key is searched for, so a search for
 `COUPLED:upload-limit:` finds the group's table beside its sites. `relations` relates its sites,
 by their markers' labels, and the files that can't hold a marker (see relations.py); `files`
 lists files in the group that no relation names, for a group whose relation is a bare op;
 `select` gives a regex, by a site's label, picking its value out of its line, or each of its
-members out of its block; `why` says why the sites must change together, which the lint and the
-hooks show beside them and which isn't part of what's reviewed.
+members out of its block; `has-no-file` names each site that's in no file at all, such as a
+setting made in a cloud console, by a label, with where it's set, which the lint can't read and
+lists as not checked;
+`why` says why the sites must change together, which the lint and the hooks show beside them.
+Neither why nor where a site with no file is set is part of what's reviewed.
 
 Below the groups, `--update` writes the reviewed section: each group as it was last reviewed, by
 a fingerprint of its table, and each of its sites, with the unit on its value in a group of
@@ -44,21 +48,24 @@ REVIEWED_HEADER = (
 
 _VERSION = 1
 _GROUP = re.compile(rf"COUPLED:({NAME_PATTERN}):")
-_GROUP_FIELDS = ("relations", "files", "select", "why")
+_GROUP_FIELDS = ("relations", "files", "select", "has-no-file", "why")
+_LABEL = re.compile(NAME_PATTERN)
 
 
 @final
 @dataclass(frozen=True)
 class Group:
     """A group's table: its relations, the files it lists, a selector for each label that has
-    one, and why its sites must change together, if it says. problems are what's wrong with the
-    table, as messages saying how to fix it; definition is a fingerprint of what it states, which
-    leaves out why."""
+    one, each site with no file by its label with where it's set, and why its sites must change
+    together, if it says. problems are what's wrong with the table, as messages saying how to
+    fix it; definition is a fingerprint of what it states, which leaves out why and where each
+    site with no file is set."""
 
     key: str
     relations: tuple[Relation, ...]
     files: tuple[FileRef, ...]
     selectors: tuple[tuple[str, str], ...]
+    no_file_sites: tuple[tuple[str, str], ...]
     why: str | None
     problems: tuple[str, ...]
     definition: str
@@ -170,6 +177,7 @@ def _group(key: str, table: dict[str, object]) -> Group:
         problems.append("Write `select` as a table of regexes by label: `{ app = '(\\d+)' }`")
     else:
         selectors = sorted((str(label), str(regex)) for label, regex in select.items())
+    no_file_sites = _no_file_sites(table.get("has-no-file", {}), problems)
     why = table.get("why")
     if not isinstance(why, str | None):
         problems.append("Write `why` as a string: why the sites must change together")
@@ -178,10 +186,41 @@ def _group(key: str, table: dict[str, object]) -> Group:
         [*(f"relation {' '.join(text.split())}" for text in written)]
         + [f"file {text}" for text in _strings(table.get("files"), "files", [])]
         + [f"select {label} {regex}" for label, regex in selectors]
+        + [f"has-no-file {label}" for label, _ in no_file_sites]
     )
     return Group(
-        key, tuple(relations), tuple(files), tuple(selectors), why, tuple(problems), definition
+        key,
+        tuple(relations),
+        tuple(files),
+        tuple(selectors),
+        no_file_sites,
+        why,
+        tuple(problems),
+        definition,
     )
+
+
+def _no_file_sites(value: object, problems: list[str]) -> tuple[tuple[str, str], ...]:
+    """Each site with no file, by its label, with where it's set, in label order."""
+    if not isinstance(value, dict):
+        problems.append(
+            'Write `has-no-file` as a table of where each is set, by label: `{ cdn = "<where>" }`'
+        )
+        return ()
+    found: list[tuple[str, str]] = []
+    for label, where in sorted(value.items()):
+        if _LABEL.fullmatch(label) is None:
+            problems.append(
+                "Name each site in `has-no-file` by a label, in lowercase letters and digits "
+                f"joined by single hyphens: `{label}` isn't one"
+            )
+        elif not isinstance(where, str) or not where.strip():
+            problems.append(
+                f'Say where `{label}` is set, as `has-no-file = {{ {label} = "<where>" }}`'
+            )
+        else:
+            found.append((label, where.strip()))
+    return tuple(found)
 
 
 def _strings(value: object, field: str, problems: list[str]) -> list[str]:

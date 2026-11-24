@@ -277,6 +277,19 @@ def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
     assert "Not checked, as they're other repositories: github.com/me/rulebook." in ran.output
 
 
+def test_sites_with_no_file_are_named_as_not_checked(sandbox: Sandbox) -> None:
+    sandbox.file("app.py", 'URI = "https://x.example/cb"  # COUPLED:oauth-redirect: app')
+    sandbox.registry(
+        '["COUPLED:oauth-redirect:"]',
+        'relations = ["app = google"]',
+        'has-no-file = { google = "Google Cloud console > Credentials" }',
+    )
+    sandbox.review("oauth-redirect")
+    ran = sandbox.lint()
+    assert_clean(ran)
+    assert "Not checked, as they have no file: oauth-redirect google." in (ran.output)
+
+
 # --- The marker message
 
 

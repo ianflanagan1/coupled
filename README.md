@@ -37,6 +37,7 @@ Each group has a table in the registry, named `["COUPLED:<key>:"]`:
 - `relations`: each `<ref> <op> <ref> [<arith> <number>]`, the first ref's value by op the second's through the formula; or a bare op, `=`, `same-set`, `same-text`, `same-as` or `same-shape`, alone, when every site and file of the group is the same. A ref is a site, by its label, or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`.
 - `files`: files in a group whose relation is a bare op, which no relation names.
 - `select`: a regex for a site, by its label, picking its value out of its line when the lint can't, with the value in its one capture group: `select = { url = ':(\d+)$' }`. In a group using set ops, it picks each member out of the site's block, one for each match: `select = { table = '^([a-z_]+) ' }`.
+- `has-no-file`: each site that's in no file at all, such as a setting made in a cloud console, by a label that relations name it by, with where it's set: `has-no-file = { google = "Google Cloud console > Credentials > Authorised redirect URIs" }`. Rewording where needs no review.
 - `why`: why the sites must change together, which the lint shows when a relation fails and the hooks show beside the group: `why = "nginx rejects a larger body before the app sees it"`. A group using judged ops must give one. Rewording it needs no review.
 
 Ops are of four kinds, by what they read each site as, and a group uses one kind:
@@ -54,14 +55,19 @@ When only part of what two sites share can be compared, relate them twice, with 
 
 A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no marker. A group in two repositories names the other's files with `//`; each repository's registry describes its own side.
 
-A setting kept in no repository at all, such as one made in a cloud console or a provider's dashboard, has no file to mark. Record its current value in `docs/external/<service>.md`, backticked on a marked line, and that doc is its site: the lint compares the value there with the rest of the group, but can't tell whether the dashboard still matches it. [examples/demo](examples/demo) records Cloudflare's upload limit this way, in [docs/external/cloudflare.md](examples/demo/docs/external/cloudflare.md), as the `cdn` site of `upload-limit`.
+A setting kept in no repository at all, such as one made in a cloud console or a provider's dashboard, has no file to mark. It can join a group in two ways:
+
+- **A doc, preferred:** record its current value in `docs/external/<service>.md`, backticked on a marked line, and that doc is its site. The lint compares the value there with the rest of the group on every run, and the reviewed section catches a change to it, though it can't tell whether the dashboard still matches the doc. [examples/demo](examples/demo) records Cloudflare's upload limit this way, in [docs/external/cloudflare.md](examples/demo/docs/external/cloudflare.md), as the `cdn` site of `upload-limit`.
+- **The registry alone:** name it in `has-no-file`, with where it's set, and relate it by its label like any site. The lint checks only the relation's form and lists the site in its status line as not checked, but the group's table, which the hooks show beside every other site, still says what to change and where. The demo's `oauth-redirect` relates the app's redirect URI to `google` this way.
+
+Start with the registry alone if writing the doc would stop the coupling being recorded at all, and move to a doc when the value is worth checking: mark it there and drop it from `has-no-file`.
 
 ## What it reports
 
 - **markers:** a key or label not in lowercase words joined by hyphens, a marker with no label, prose straight after a label with no `.` between, a tag in the old bracket form, and a marker with no line of code after it
 - **block ends:** an END with no marker of its key above it to close, a block holding another of its own key, blocks that overlap, and an END after a marker of a group using value ops
 - **the registry:** none when there are markers, one that isn't TOML or has no `version = 1`, a table not named `["COUPLED:<key>:"]`, a field it doesn't know, and a relation, file or selector it can't read
-- **groups:** a key with no table, a label no marker has or two markers share, a group with fewer than two sites and files, one mixing ops of different kinds, a bare op beside other relations, two relations between the same sites, a site relating to itself, a formula with an op that isn't a value op, a selector in a group of text or judged ops, a group of judged ops with no `why`, a formula multiplying or dividing by 0, and a site or file nothing relates
+- **groups:** a key with no table, a label no marker or `has-no-file` entry has, or two markers share, a site in `has-no-file` that's also marked, selected or not related, a group with fewer than two sites and files, one mixing ops of different kinds, a bare op beside other relations, two relations between the same sites, a site relating to itself, a formula with an op that isn't a value op, a selector in a group of text or judged ops, a group of judged ops with no `why`, a formula multiplying or dividing by 0, and a site or file nothing relates
 - **files:** a file in this repository that isn't there, unless it's marked optional, and one that holds a marker of the group, which should be named by its label
 - **relations**, in groups using value, set or text ops: a site or file it can't read, and a relation that doesn't hold, with what it compared (the two values, the names only one set holds, or the first line of text that differs), and a reminder to change the sites rather than the relation unless what must hold has changed
 - **the reviewed section:** a group that differs from what it records, with each site's current value in a group using value ops (see [The reviewed section](#the-reviewed-section)), and a key given to `--update` that has no group
@@ -74,7 +80,7 @@ In a group using set ops, a site's members are the quoted literals on the lines 
 
 In a group using `same-text`, a site's text is its block, and a file's is all of it, or the JSON at its pointer. Indentation, blank lines and the markers of sites inside a block aren't part of its text, and nor is how the JSON is laid out.
 
-The lint doesn't read other repositories, since which revision to compare against, and how to reach it, depend on how the two are released. It names them in its status line as not checked.
+The lint doesn't read other repositories, since which revision to compare against, and how to reach it, depend on how the two are released. It names them in its status line as not checked, as it does each site that has no file, by its key and label.
 
 ## The reviewed section
 

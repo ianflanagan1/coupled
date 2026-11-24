@@ -139,6 +139,18 @@ def unchecked(registry: Registry | Unparseable | None) -> list[str]:
     return repos
 
 
+def no_file_sites(registry: Registry | Unparseable | None) -> list[str]:
+    """Each site of the groups that has no file, as `<key> <label>`, in order: sites the lint
+    can't read, such as settings made in a cloud console."""
+    if not isinstance(registry, Registry):
+        return []
+    return [
+        f"{group.key} {label}"
+        for group in registry.groups.values()
+        for label, _ in group.no_file_sites
+    ]
+
+
 def group_kind(group: Group) -> Kind | None:
     """The kind of op the group's relations use, or None if it has no relations or mixes
     kinds."""
@@ -318,7 +330,24 @@ class _GroupCheck:
             for ref in refs(relation)
             if isinstance(ref, Label)
         ] + [label for label, _ in self._group.selectors]
-        reported: list[str] = []
+        no_file = [label for label, _ in self._group.no_file_sites]
+        for label in no_file:
+            if label in first:
+                problems.append(
+                    Problem(
+                        self._where,
+                        f"Drop `{label}` from `has-no-file`: {first[label]} marks it, so that's "
+                        "its site",
+                    )
+                )
+            elif self._group.selector(label) is not None:
+                problems.append(
+                    Problem(
+                        self._where,
+                        f"Drop `{label}` from `select`: it has no file for the lint to read",
+                    )
+                )
+        reported: list[str] = [*no_file]
         for label in named:
             if label not in first and label not in reported:
                 reported.append(label)
@@ -394,9 +423,11 @@ class _GroupCheck:
                 )
             pairs.append(frozenset((left, right)))
         result = [Problem(self._where, message) for message in problems]
-        members = [Label(label) for _, label in self._sites] + [
-            ref.unmarked() for ref in self._group.file_refs()
-        ]
+        members = (
+            [Label(label) for _, label in self._sites]
+            + [ref.unmarked() for ref in self._group.file_refs()]
+            + [Label(label) for label, _ in self._group.no_file_sites]
+        )
         if len(members) < 2:
             result.append(
                 Problem(
@@ -415,6 +446,16 @@ class _GroupCheck:
                     Problem(
                         site.where,
                         f"Nothing relates this site: name `{label}` in a relation of "
+                        f"{table_name(self._key)}",
+                    )
+                )
+        marked = [label for _, label in self._sites]
+        for label, _ in self._group.no_file_sites:
+            if Label(label) not in related and label not in marked:
+                result.append(
+                    Problem(
+                        self._where,
+                        f"Nothing relates `{label}`, which has no file: name it in a relation of "
                         f"{table_name(self._key)}",
                     )
                 )
