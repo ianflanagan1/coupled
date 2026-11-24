@@ -102,37 +102,37 @@ class Lint:
 
         updated = False
         problems = gathered.unreadable + check(
-            sites, registry, gathered.files, found.registry, found.message
+            sites, registry, gathered.files, found.registry_file, found.message
         )
         if isinstance(registry, Registry):
             now = review.current(sites, registry, gathered.files)
             old = registry.reviewed
             unknown = [key for key in update if key not in registry.groups]
             problems += [
-                Problem(found.registry, f"--update {key}: there's no group COUPLED:{key}:")
+                Problem(found.registry_file, f"--update {key}: there's no group COUPLED:{key}:")
                 for key in unknown
             ]
             if update and not unknown and gathered.registry_text is not None:
                 new = review.reviewed(old, now, update)
                 text = registries.with_reviewed(gathered.registry_text, new)
                 if text != gathered.registry_text:
-                    self._files.write(root + "/" + found.registry, text)
+                    self._files.write(root + "/" + found.registry_file, text)
                     updated = True
                 old = new
-            problems += review.compare(old, now, found.registry)
+            problems += review.compare(old, now, found.registry_file)
         keys: dict[str, list[str]] = {}
         for site in sites:
             if isinstance(site.found, Marker):
                 keys.setdefault(site.found.key, []).append(site.where)
         return Report(
-            problems, list(keys.items()), unchecked(registry), fixed, updated, found.registry
+            problems, list(keys.items()), unchecked(registry), fixed, updated, found.registry_file
         )
 
     def _gather(self, root: str, excludes: list[str], found: Settings) -> _Gathered:
         paths = [
             path
             for path in self._search.paths(root)
-            if not review.excluded(path, excludes) and path != found.registry
+            if not review.excluded(path, excludes) and path != found.registry_file
         ]
         sites: list[Site] = []
         unreadable: list[Problem] = []
@@ -144,7 +144,7 @@ class Lint:
                 )
                 continue
             sites += file_sites(path, text.splitlines())
-        registry_text = self._files.read(root + "/" + found.registry)
+        registry_text = self._files.read(root + "/" + found.registry_file)
         registry = None if registry_text is None else registries.parse(registry_text)
         files: dict[str, FileRead] = {}
         if isinstance(registry, Registry):
@@ -159,7 +159,9 @@ class Lint:
             path = site.where.rsplit(":", 1)[0]
             if isinstance(site.found, Marker) and path not in paths:
                 paths.append(path)
-        messages = wanted(markers(gathered.sites), gathered.registry, found.message, found.registry)
+        messages = wanted(
+            markers(gathered.sites), gathered.registry, found.message, found.registry_file
+        )
         changed: list[str] = []
         for path in paths:
             text = self._files.read(root + "/" + path)

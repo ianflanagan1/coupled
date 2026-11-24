@@ -31,7 +31,7 @@ or a block edited is reported until the group is reviewed and recorded with
 
 <dir>/.config/coupled-tags.toml, if it's there, sets beside version = 1 the
 path prefixes to exclude on every run, as exclude = ["docs", "tests"], the
-registry, as registry = ".config/coupled.toml", and what follows each marker's
+registry, as registry-file = ".config/coupled.toml", and what follows each marker's
 label: tag-relations = true for the site's own relations, and tag-pointer = true
 for what to search for and which file describes its group. Both are off by
 default. --fix writes the message.

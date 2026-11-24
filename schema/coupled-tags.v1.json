@@ -22,7 +22,7 @@
       },
       "default": []
     },
-    "registry": {
+    "registry-file": {
       "description": "The registry's path from the repository's root, with no `.` or `..` part, so it's inside the repository.",
       "type": "string",
       "minLength": 1,

@@ -1,10 +1,10 @@
 """A repository's settings for its COUPLED tags, committed as .config/coupled-tags.toml:
 
-    version = 1                        # the version of the file's format: see schema/
-    exclude = ["README.md", "tests"]   # path prefixes whose markers aren't checked; none by default
-    registry = ".config/coupled.toml"  # the registry; coupled-tags-registry.toml by default
-    tag-pointer = true                 # say where each label's group is: off by default
-    tag-relations = true               # give each label's relations: off by default
+    version = 1                             # the version of the file's format: see schema/
+    exclude = ["README.md", "tests"]        # path prefixes not checked; none by default
+    registry-file = ".config/coupled.toml"  # the registry; coupled-tags-registry.toml by default
+    tag-pointer = true                      # say where each label's group is: off by default
+    tag-relations = true                    # give each label's relations: off by default
 
 A repository needn't have the file. The paths it excludes are skipped on every run, so the check
 and --update can't disagree about them, nor about which file is the registry.
@@ -19,7 +19,7 @@ FILE = ".config/coupled-tags.toml"
 # The registry's path from the repository's root, unless the settings name another.
 REGISTRY_FILE = "coupled-tags-registry.toml"
 
-_KNOWN = ("exclude", "registry", "tag-pointer", "tag-relations")
+_KNOWN = ("exclude", "registry-file", "tag-pointer", "tag-relations")
 
 
 @final
@@ -67,7 +67,7 @@ class Settings:
     # The path prefixes whose tags aren't checked, without a trailing slash.
     excludes: list[str]
     # The registry's path from the repository's root.
-    registry: str
+    registry_file: str
     # What follows each marker's label.
     message: TagMessage
 
@@ -105,16 +105,18 @@ def _v1(table: dict[str, object], where: str) -> Settings | Invalid:
         if not isinstance(path, str) or not path:
             return Invalid(f"exclude in {where} must be a list of paths.", ())
         excludes.append(path.rstrip("/"))
-    registry = table.get("registry", REGISTRY_FILE)
-    if not isinstance(registry, str) or not _inside(registry):
-        return Invalid(f"registry in {where} must be the path of a file inside the repository.", ())
+    registry_file = table.get("registry-file", REGISTRY_FILE)
+    if not isinstance(registry_file, str) or not _inside(registry_file):
+        return Invalid(
+            f"registry-file in {where} must be the path of a file inside the repository.", ()
+        )
     pointer = table.get("tag-pointer", False)
     if not isinstance(pointer, bool):
         return Invalid(f"tag-pointer in {where} must be true or false.", ())
     relations = table.get("tag-relations", False)
     if not isinstance(relations, bool):
         return Invalid(f"tag-relations in {where} must be true or false.", ())
-    return Settings(excludes, registry, TagMessage(pointer=pointer, relations=relations))
+    return Settings(excludes, registry_file, TagMessage(pointer=pointer, relations=relations))
 
 
 def _inside(path: str) -> bool:

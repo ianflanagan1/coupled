@@ -213,14 +213,14 @@ def test_the_registry_is_the_file_the_settings_file_names(sandbox: Sandbox) -> N
     sandbox.file("app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app")
     sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
     sandbox.file(".config/coupled.toml", "version = 1", *UPLOAD)
-    sandbox.file(SETTINGS, "version = 1", 'registry = ".config/coupled.toml"')
+    sandbox.file(SETTINGS, "version = 1", 'registry-file = ".config/coupled.toml"')
     sandbox.review("upload-limit")
     assert_clean(sandbox.lint())
     assert "[reviewed." in (sandbox.repo / ".config/coupled.toml").read_text()
 
 
 def test_a_registry_outside_the_repository_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file(SETTINGS, "version = 1", 'registry = "../coupled.toml"')
+    sandbox.file(SETTINGS, "version = 1", 'registry-file = "../coupled.toml"')
     assert_problem(sandbox.lint(), "must be the path of a file inside the repository")
 
 

@@ -66,7 +66,7 @@ class Hook:
         keys = self._shown.unseen(session, hook.touched_keys(path, content, changes))
         if not keys:
             return None
-        return hook.gate_reason(self._groups(root, chosen, keys), chosen.registry)
+        return hook.gate_reason(self._groups(root, chosen, keys), chosen.registry_file)
 
     def context(self, session: str, path: str) -> str | None:
         """What to tell Claude about the groups in the file at path it has read, or None."""
@@ -81,7 +81,7 @@ class Hook:
         if not keys:
             return None
         shown = path if root is None else os.path.relpath(path, root)
-        return hook.context(shown, self._groups(root, chosen, keys), chosen.registry)
+        return hook.context(shown, self._groups(root, chosen, keys), chosen.registry_file)
 
     def _found(self, path: str) -> tuple[str | None, Settings] | None:
         """The root of the repository holding path, or None outside one, and its settings; or
@@ -93,21 +93,21 @@ class Hook:
         if isinstance(chosen, Invalid):
             chosen = defaults()
         relative = os.path.relpath(path, root)
-        if relative == chosen.registry or excluded(relative, chosen.excludes):
+        if relative == chosen.registry_file or excluded(relative, chosen.excludes):
             return None
         return root, chosen
 
     def _groups(self, root: str | None, chosen: Settings, keys: list[str]) -> list[hook.Group]:
         if root is None:
             return [hook.Group(key, None, None) for key in keys]
-        text = self._files.read(os.path.join(root, chosen.registry))
+        text = self._files.read(os.path.join(root, chosen.registry_file))
         groups: list[hook.Group] = []
         ignored: dict[str, bool] = {}
         for key in keys:
             sites: list[str] = []
             for hit in self._repositories.hits(root, f"COUPLED:{key}:"):
                 where = hit.split(":", 1)[0]
-                if excluded(where, chosen.excludes) or where == chosen.registry:
+                if excluded(where, chosen.excludes) or where == chosen.registry_file:
                     continue
                 if where not in ignored:
                     content = self._files.read(os.path.join(root, where))

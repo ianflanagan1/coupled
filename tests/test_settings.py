@@ -13,7 +13,7 @@ OFF = TagMessage(pointer=False, relations=False)
 
 
 NOT_A_REGISTRY = Invalid(
-    f"registry in {WHERE} must be the path of a file inside the repository.", ()
+    f"registry-file in {WHERE} must be the path of a file inside the repository.", ()
 )
 
 
@@ -69,29 +69,29 @@ def test_a_file_that_names_no_registry_uses_the_registry_at_the_root() -> None:
 
 
 def test_the_path_under_registry_is_the_registry() -> None:
-    found = settings(read({"registry": ".config/coupled.toml"}))
+    found = settings(read({"registry-file": ".config/coupled.toml"}))
     assert found == Settings([], ".config/coupled.toml", OFF)
 
 
 def test_a_registry_that_is_not_text_is_invalid() -> None:
-    assert settings(read({"registry": 3})) == NOT_A_REGISTRY
+    assert settings(read({"registry-file": 3})) == NOT_A_REGISTRY
 
 
 def test_an_empty_registry_is_invalid() -> None:
-    assert settings(read({"registry": ""})) == NOT_A_REGISTRY
+    assert settings(read({"registry-file": ""})) == NOT_A_REGISTRY
 
 
 def test_a_registry_given_by_an_absolute_path_is_invalid() -> None:
-    assert settings(read({"registry": "/tmp/coupled.toml"})) == NOT_A_REGISTRY
+    assert settings(read({"registry-file": "/tmp/coupled.toml"})) == NOT_A_REGISTRY
 
 
 def test_a_registry_outside_the_repository_is_invalid() -> None:
-    assert settings(read({"registry": "../coupled.toml"})) == NOT_A_REGISTRY
-    assert settings(read({"registry": "config/../../coupled.toml"})) == NOT_A_REGISTRY
+    assert settings(read({"registry-file": "../coupled.toml"})) == NOT_A_REGISTRY
+    assert settings(read({"registry-file": "config/../../coupled.toml"})) == NOT_A_REGISTRY
 
 
 def test_a_registry_that_names_a_directory_is_invalid() -> None:
-    assert settings(read({"registry": "config/"})) == NOT_A_REGISTRY
+    assert settings(read({"registry-file": "config/"})) == NOT_A_REGISTRY
 
 
 def test_tag_relations_and_tag_pointer_are_each_turned_on_on_their_own() -> None:
