@@ -1,12 +1,14 @@
 """The Claude Code hooks: the gate, which stops the first edit in a session to a line a COUPLED
 marker covers until Claude has been shown its group, and the context hook, which shows Claude
 the groups in a file it reads. A group shown by either isn't shown again in the session. Files
-the repository's settings exclude, and its registry, are left alone."""
+the repository's settings exclude, files holding the ignore directive, and its registry, are
+left alone."""
 
 import os
 from typing import Protocol, final
 
 from coupled_tags_lint.core import hook
+from coupled_tags_lint.core.markers import ignores_file
 from coupled_tags_lint.core.registry import entry_text
 from coupled_tags_lint.core.review import excluded
 from coupled_tags_lint.core.settings import Invalid, Read, Settings, defaults, settings
@@ -100,13 +102,18 @@ class Hook:
             return [hook.Group(key, None, None) for key in keys]
         text = self._files.read(os.path.join(root, chosen.registry))
         groups: list[hook.Group] = []
+        ignored: dict[str, bool] = {}
         for key in keys:
-            sites = [
-                hit
-                for hit in self._repositories.hits(root, f"COUPLED:{key}:")
-                if not excluded(hit.split(":", 1)[0], chosen.excludes)
-                and hit.split(":", 1)[0] != chosen.registry
-            ]
+            sites: list[str] = []
+            for hit in self._repositories.hits(root, f"COUPLED:{key}:"):
+                where = hit.split(":", 1)[0]
+                if excluded(where, chosen.excludes) or where == chosen.registry:
+                    continue
+                if where not in ignored:
+                    content = self._files.read(os.path.join(root, where))
+                    ignored[where] = content is not None and ignores_file(content.splitlines())
+                if not ignored[where]:
+                    sites.append(hit)
             table = None if text is None else entry_text(text, key)
             groups.append(hook.Group(key, sites, table))
         return groups

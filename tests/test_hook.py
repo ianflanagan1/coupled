@@ -132,6 +132,13 @@ def test_files_the_settings_exclude_are_left_alone(repo: Repo) -> None:
     assert "docs/example.md" not in str(_output(repo.read("s2", "app.py"))["additionalContext"])
 
 
+def test_files_holding_the_ignore_directive_are_left_alone(repo: Repo) -> None:
+    repo.file("SKILL.md", "<!-- COUPLED:IGNORE-FILE -->", "COUPLED:upload-limit: example")
+    assert repo.read("s1", "SKILL.md") is None
+    assert repo.edit("s1", "SKILL.md", "COUPLED:upload-limit: example") is None
+    assert "SKILL.md" not in str(_output(repo.read("s2", "app.py"))["additionalContext"])
+
+
 def test_the_registry_itself_is_left_alone(repo: Repo) -> None:
     assert repo.read("s1", ".coupled-tags.toml") is None
 

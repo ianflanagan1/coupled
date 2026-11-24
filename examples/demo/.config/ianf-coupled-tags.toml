@@ -1,6 +1,6 @@
 version = 1
-# docs/ quotes a marker as an example, which isn't a site.
-exclude = ["docs"]
+# tests/fixtures holds markers written wrong on purpose, which aren't sites.
+exclude = ["tests/fixtures"]
 # Turn either on and run `coupled-tags-lint --fix` to write each marker's message.
 tag-relations = false
 tag-pointer = false

@@ -64,6 +64,25 @@ def test_mentions_and_quoted_search_text_are_not_markers() -> None:
     assert found('["COUPLED:upload-limit:"]') == []
 
 
+def test_a_file_with_the_ignore_directive_on_a_line_of_its_own_has_no_markers() -> None:
+    assert found("COUPLED:IGNORE-FILE", "MAX = 8  # COUPLED:upload-limit: app") == []
+
+
+def test_the_ignore_directive_can_be_in_a_comment() -> None:
+    assert found("<!-- COUPLED:IGNORE-FILE -->", "COUPLED:x: readme") == []
+    assert found("  # COUPLED:IGNORE-FILE", "X = 1  # COUPLED:x: app") == []
+    assert found("/* COUPLED:IGNORE-FILE */", "/* COUPLED:x: css */") == []
+
+
+def test_the_ignore_directive_mentioned_in_a_line_is_neither_a_marker_nor_ignores_the_file() -> (
+    None
+):
+    assert found("Write `COUPLED:IGNORE-FILE` on a line.", "# COUPLED:x: app") == [
+        Marker("x", "app", ())
+    ]
+    assert found('DIRECTIVE = "COUPLED:IGNORE-FILE"') == []
+
+
 def test_two_markers_can_share_a_comment() -> None:
     assert found("X = 1  # COUPLED:a: x. COUPLED:b: y") == [
         Marker("a", "x", ()),

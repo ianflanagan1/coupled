@@ -171,6 +171,18 @@ def test_a_path_the_settings_file_excludes_is_skipped(sandbox: Sandbox) -> None:
     assert_clean(sandbox.lint())
 
 
+def test_a_file_holding_the_ignore_directive_is_skipped(sandbox: Sandbox) -> None:
+    upload(sandbox, 8)
+    sandbox.file(
+        ".claude/skills/coupled/SKILL.md",
+        "<!-- COUPLED:IGNORE-FILE -->",
+        "MAX_UPLOAD_MB = 99  # COUPLED:upload-limit: app",
+        "COUPLED:no-such-group: example",
+    )
+    sandbox.review("upload-limit")
+    assert_clean(sandbox.lint())
+
+
 def test_an_excluded_path_adds_to_the_settings_file_s(sandbox: Sandbox) -> None:
     upload(sandbox, 8)
     sandbox.file("docs/b.py", "X = 2  # COUPLED:upload-limit: app")

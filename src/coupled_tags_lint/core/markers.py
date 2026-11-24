@@ -7,6 +7,10 @@ or after the label and a `.`: `COUPLED:<key>: <label>. <prose>`.
 
 `COUPLED:<key>:END` closes the block the nearest marker of its key above it opens, so that the
 marker describes every line between them.
+
+A file holding `COUPLED:IGNORE-FILE` alone on a line, or alone in a comment on it, has no
+markers: its `COUPLED:` text is all examples, such as the coupled-tags skill's, wherever it's
+copied. Written anywhere else in a line, it's a mention, which doesn't.
 """
 
 import re
@@ -24,6 +28,9 @@ _KEY = re.compile(rf"({NAME_PATTERN}):")
 # A key written as text to search for, quoted: `"COUPLED:upload-limit:"`, not a marker.
 _SEARCH = re.compile(rf"{NAME_PATTERN}:['\"`]")
 _OLD_TAG = re.compile(rf"{NAME_PATTERN}:\[")
+_IGNORE_FILE = "IGNORE-FILE"
+# The directive alone on its line, but for whitespace and comment syntax around it.
+_IGNORES_FILE = re.compile(rf"[^\w]*COUPLED:{_IGNORE_FILE}[^\w]*")
 
 
 @final
@@ -94,7 +101,9 @@ def key_of(found: Found) -> str | None:
 def find_markers(lines: list[str]) -> list[Placed]:
     """The markers and ENDs in a file's lines, in order, each marker with the END closing its
     block. Mentions in prose such as `COUPLED:<key>:`, and quoted search text such as
-    `"COUPLED:upload-limit:"`, aren't markers."""
+    `"COUPLED:upload-limit:"`, aren't markers. A file holding the ignore directive has none."""
+    if ignores_file(lines):
+        return []
     placed: list[Placed] = []
     for index, line in enumerate(lines):
         column = 0
@@ -102,6 +111,8 @@ def find_markers(lines: list[str]) -> list[Placed]:
             column = start + len("COUPLED:")
             rest = line[column:]
             if not re.match(r"[A-Za-z0-9_-]", rest) or _SEARCH.match(rest):
+                continue
+            if rest.startswith(_IGNORE_FILE) and not re.match(r"[\w-]", rest[len(_IGNORE_FILE) :]):
                 continue
             end = _END.match(rest)
             if end is not None:
@@ -112,6 +123,12 @@ def find_markers(lines: list[str]) -> list[Placed]:
             placed.append(Placed(found, index, start, column + length, None))
             column += length
     return _paired(placed)
+
+
+def ignores_file(lines: list[str]) -> bool:
+    """Whether a file's lines hold the ignore directive on a line of its own, so that its
+    `COUPLED:` text is examples, not markers."""
+    return any(_IGNORES_FILE.fullmatch(line) for line in lines)
 
 
 def _marker(rest: str) -> tuple[Found, int]:

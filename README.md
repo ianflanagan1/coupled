@@ -30,6 +30,8 @@ A marker's key names its group; its label names this site within the group. A ke
 
 A marker describes the code before its comment on its line, or for a marker on a comment line, the first line of code after it, past any other comment lines but not a blank line. The lint tells comments from code by the file's own comment syntax, which it knows by the file's extension or name, such as `%` in Erlang and `(* *)` in OCaml; a file of a kind it doesn't know takes the common ones, `#`, `//`, `;`, `--`, `/* */`, `<!-- -->` and `{# #}`. `COUPLED:<key>:END`, in a comment after the last line of a block, closes the nearest marker of its key above it, so that it describes every line down to the END. Blocks of different keys can nest but not overlap.
 
+A file whose `COUPLED:` text is all examples, such as the coupled-tags skill copied into a repository's `.claude/skills/`, says so with `COUPLED:IGNORE-FILE` on a line of its own, alone or alone in a comment, such as `<!-- COUPLED:IGNORE-FILE -->`. The lint and the hooks then skip the whole file, wherever it is, with no setting. Written inside a line, as here, it's only a mention. Use it for a file that travels between repositories; for paths of one repository's own, such as test fixtures, use `exclude`.
+
 Each group has a table in the registry, named `["COUPLED:<key>:"]`:
 
 - `relations`: each `<ref> <op> <ref> [<arith> <number>]`, the first ref's value by op the second's through the formula; or a bare op, `=`, `same-as` or `same-shape`, alone, when every site and file of the group is the same. A ref is a site, by its label, or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`.
@@ -116,7 +118,7 @@ The file is optional. The lint reads the copy on disk in the directory it scans,
 - **the gate**, as `PreToolUse` on `Write|Edit|MultiEdit`: the first call in a session that changes a marked line, the line a marker describes, or a line of a marked block, is denied, with each touched group's sites and table as the reason. Claude reads them, changes the group together, and retries.
 - **the context hook**, as `PostToolUse` on `Read`: when Claude reads a file holding markers, the hook adds each group's sites and table to Claude's context.
 
-A group either hook shows isn't shown again in the session, so the gate rarely fires on a file Claude has read. Files the repository's settings exclude, and the registry, are left alone. Neither sees edits or reads made through Bash, which is why markers name their key in a form a search finds. If the hook fails, it tells the user and lets the call go ahead. A read of a file with no markers costs about 45 ms.
+A group either hook shows isn't shown again in the session, so the gate rarely fires on a file Claude has read. Files the repository's settings exclude, files holding `COUPLED:IGNORE-FILE`, and the registry, are left alone. Neither sees edits or reads made through Bash, which is why markers name their key in a form a search finds. If the hook fails, it tells the user and lets the call go ahead. A read of a file with no markers costs about 45 ms.
 
 ```json
 {
