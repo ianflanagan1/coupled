@@ -37,6 +37,7 @@ Each group has a table in the registry, named `["COUPLED:<key>:"]`:
 - `relations`: each `<ref> <op> <ref> [<arith> <number>]`, the first ref's value by op the second's through the formula; or a bare op, `=`, `same-as` or `same-shape`, alone, when every site and file of the group is the same. A ref is a site, by its label, or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`.
 - `files`: files in a group whose relation is a bare op, which no relation names.
 - `select`: a regex for a site, by its label, picking its value out of its line when the lint can't, with the value in its one capture group: `select = { url = ':(\d+)$' }`.
+- `why`: why the sites must change together, which the lint shows when a relation fails and the hooks show beside the group: `why = "nginx rejects a larger body before the app sees it"`. Rewording it needs no review.
 
 Ops are of two kinds, and a group uses one. Value ops, `=`, `!=`, `<`, `<=`, `>`, `>=`, compare single values, and the lint checks them. Structural ops, `same-as` (duplicated code), `same-shape` (types and schemas with the same fields), `subset-of` and `superset-of`, relate code or structure, which the lint records but doesn't compare.
 

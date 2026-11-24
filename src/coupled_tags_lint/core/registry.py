@@ -12,7 +12,9 @@ Each group is a table named as the marker's key is searched for, so a search for
 `COUPLED:upload-limit:` finds the group's table beside its sites. `relations` relates its sites,
 by their markers' labels, and the files that can't hold a marker (see relations.py); `files`
 lists files in the group that no relation names, for a group whose relation is a bare op;
-`select` gives a regex picking a site's value out of its line, by its label.
+`select` gives a regex picking a site's value out of its line, by its label; `why` says why the
+sites must change together, which the lint and the hooks show beside them and which isn't part
+of what's reviewed.
 
 Below the groups, `--update` writes the reviewed section: each group as it was last reviewed, by
 a fingerprint of its table, and each of its sites, with the unit on its value in a group of
@@ -43,20 +45,22 @@ REVIEWED_HEADER = (
 
 _VERSION = 1
 _GROUP = re.compile(rf"COUPLED:({NAME_PATTERN}):")
-_GROUP_FIELDS = ("relations", "files", "select")
+_GROUP_FIELDS = ("relations", "files", "select", "why")
 
 
 @final
 @dataclass(frozen=True)
 class Group:
-    """A group's table: its relations, the files it lists, and a selector for each label that
-    has one. problems are what's wrong with the table, as messages saying how to fix it;
-    definition is a fingerprint of what it states."""
+    """A group's table: its relations, the files it lists, a selector for each label that has
+    one, and why its sites must change together, if it says. problems are what's wrong with the
+    table, as messages saying how to fix it; definition is a fingerprint of what it states, which
+    leaves out why."""
 
     key: str
     relations: tuple[Relation, ...]
     files: tuple[FileRef, ...]
     selectors: tuple[tuple[str, str], ...]
+    why: str | None
     problems: tuple[str, ...]
     definition: str
 
@@ -167,12 +171,18 @@ def _group(key: str, table: dict[str, object]) -> Group:
         problems.append("Write `select` as a table of regexes by label: `{ app = '(\\d+)' }`")
     else:
         selectors = sorted((str(label), str(regex)) for label, regex in select.items())
+    why = table.get("why")
+    if not isinstance(why, str | None):
+        problems.append("Write `why` as a string: why the sites must change together")
+        why = None
     definition = _fingerprint(
         [*(f"relation {' '.join(text.split())}" for text in written)]
         + [f"file {text}" for text in _strings(table.get("files"), "files", [])]
         + [f"select {label} {regex}" for label, regex in selectors]
     )
-    return Group(key, tuple(relations), tuple(files), tuple(selectors), tuple(problems), definition)
+    return Group(
+        key, tuple(relations), tuple(files), tuple(selectors), why, tuple(problems), definition
+    )
 
 
 def _strings(value: object, field: str, problems: list[str]) -> list[str]:

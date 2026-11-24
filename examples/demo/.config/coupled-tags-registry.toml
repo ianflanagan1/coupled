@@ -1,44 +1,41 @@
 version = 1
 
-# Value ops: a directive, an assignment, an HTML attribute picked out by a selector, and a JSON
-# file with a pointer.
 ["COUPLED:upload-limit:"]
 relations = ["nginx >= app", "form = app", "app = ./config/limits.json#/upload_mb"]
 select = { form = 'data-max-mb="(\d+)"' }
+why = "nginx rejects a larger body with a 413 before the app sees it, and the form and the API's limits tell users the app's limit"
 
-# A formula on the second value.
 ["COUPLED:request-timeout:"]
 relations = ["proxy >= app + 5"]
+why = "nginx must wait longer than the app, so the app's own timeout error reaches the client rather than a 504"
 
-# A selector where the line holds more than one value.
 ["COUPLED:port:"]
 relations = ["compose = app"]
 select = { compose = '"(\d+):' }
+why = "compose publishes the port the app listens on"
 
-# A bare op: every site and file is the same. The CI site gives only the major version, which
-# matches on the parts both give. A file marked `?` may be missing.
 ["COUPLED:node-version:"]
 relations = ["="]
 files = ["./.nvmrc", "./.node-version?"]
+why = "CI tests on the Node version the image and developers run"
 
-# Files alone, which can't hold a marker.
 ["COUPLED:python-version:"]
 relations = ["./.python-version = ./web/package.json#/engines/python-backend"]
+why = "the web package's tooling runs the backend under the Python version it pins"
 
-# A selector for CSS, whose line the lint can't read a value from.
 ["COUPLED:breakpoint:"]
 relations = ["css = ts"]
 select = { css = 'max-width: (\d+)px' }
+why = "the layout code switches to mobile at the width the stylesheet does"
 
-# Text compared by =, in a file whose name gives no comment syntax. CODEOWNERS paths start at
-# the root with a slash, which the selector leaves out.
 ["COUPLED:registry-path:"]
 relations = ["owners = settings"]
 select = { owners = '^/(\S+)' }
+why = "CODEOWNERS must name the registry where the settings put it, or a change to it skips review"
 
-# Structural ops: blocks closed by END, recorded in the reviewed section rather than compared.
 ["COUPLED:safe-name:"]
 relations = ["same-as"]
+why = "the browser and the server must make the same safe name from a filename"
 
 ["COUPLED:upload-shape:"]
 relations = [
@@ -46,10 +43,11 @@ relations = [
     "type same-shape model",
     "type same-shape //github.com/example/upload-api/schema/upload.json",
 ]
+why = "the table stores, the model reads and the web receives one upload record, which the upload API's schema defines"
 
-# Nested inside upload-shape's model block.
 ["COUPLED:upload-status:"]
 relations = ["web subset-of app"]
+why = "the web shows only statuses the app can give an upload"
 
 # Written by coupled-tags-lint --update: each group as it was last reviewed. Don't edit below this line.
 

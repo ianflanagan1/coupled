@@ -6,4 +6,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"  # COUPLED:node-version: ci
+          node-version: "24"  # COUPLED:node-version: ci. The major version alone matches on the parts both give.

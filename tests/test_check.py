@@ -52,6 +52,20 @@ def test_a_relation_that_does_not_hold_is_reported_at_its_first_site() -> None:
     ]
 
 
+def test_a_relation_that_does_not_hold_says_why_its_sites_are_coupled() -> None:
+    found = problems(
+        {**UPLOAD_FILES, "app.py": "MAX_UPLOAD_MB = 12  # COUPLED:upload-limit: app"},
+        UPLOAD + 'why = "nginx rejects a larger body before the app sees it"\n',
+        {},
+        OFF,
+    )
+    assert messages_of(found) == [
+        "nginx.conf:1 `proxy >= app` doesn't hold with app.py:1: 10m >= 12. They're coupled "
+        "because nginx rejects a larger body before the app sees it. Change the values so it "
+        "holds; change the relation only if what must hold has changed"
+    ]
+
+
 def test_a_repository_with_markers_and_no_registry_is_reported() -> None:
     [problem] = problems(UPLOAD_FILES, None, {}, OFF)
     assert problem.where == REGISTRY

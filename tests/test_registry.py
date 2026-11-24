@@ -104,6 +104,24 @@ def test_a_group_with_no_relations_or_an_unknown_field_is_reported() -> None:
     assert any("Drop `note`" in problem for problem in group.problems)
 
 
+def test_a_group_s_table_can_say_why_its_sites_are_coupled() -> None:
+    group = registry(TEXT + 'why = "nginx rejects a larger body before the app sees it"\n')
+    assert group.groups["upload-limit"].why == "nginx rejects a larger body before the app sees it"
+    assert group.groups["upload-limit"].problems == ()
+    assert registry(TEXT).groups["upload-limit"].why is None
+
+
+def test_a_why_that_is_not_text_is_reported() -> None:
+    group = registry(TEXT + "why = 3\n").groups["upload-limit"]
+    assert group.problems == ("Write `why` as a string: why the sites must change together",)
+
+
+def test_rewording_why_leaves_the_definition_as_reviewed() -> None:
+    before = registry(TEXT + 'why = "a"\n').groups["upload-limit"].definition
+    assert registry(TEXT + 'why = "b"\n').groups["upload-limit"].definition == before
+    assert registry(TEXT).groups["upload-limit"].definition == before
+
+
 def test_a_change_to_what_a_table_states_changes_its_definition() -> None:
     before = registry(TEXT).groups["upload-limit"].definition
     reworded = registry(TEXT.replace('"proxy >= app"', '"proxy  >=  app"'))

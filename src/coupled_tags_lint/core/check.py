@@ -444,11 +444,15 @@ class _GroupCheck:
                     assert isinstance(op, ValueOp)
                     mine, other = readings.get(_plain(left)), readings.get(_plain(right))
                     if mine is not None and other is not None:
-                        problems += _relation(relation.text(), op, formula, mine, other)
+                        problems += _relation(
+                            relation.text(), op, formula, mine, other, self._group.why
+                        )
                 case Bare():
                     every = list(readings.values())
                     for reading in every[1:]:
-                        problems += _relation("=", ValueOp.EQ, None, reading, every[0])
+                        problems += _relation(
+                            "=", ValueOp.EQ, None, reading, every[0], self._group.why
+                        )
                 case _:
                     assert_never(relation)
         return problems
@@ -464,6 +468,7 @@ def _relation(
     formula: Formula | None,
     mine: tuple[str, Reading],
     other: tuple[str, Reading],
+    why: str | None,
 ) -> list[Problem]:
     (where, reading), (other_where, other_reading) = mine, other
     assert isinstance(reading, Value) and isinstance(other_reading, Value)
@@ -471,11 +476,12 @@ def _relation(
         case Holds():
             return []
         case Fails(shown):
+            because = "" if why is None else f" They're coupled because {why.rstrip('.')}."
             return [
                 Problem(
                     where,
-                    f"`{text}` doesn't hold with {other_where}: {shown}. Change the values so it "
-                    "holds; change the relation only if what must hold has changed",
+                    f"`{text}` doesn't hold with {other_where}: {shown}.{because} Change the "
+                    "values so it holds; change the relation only if what must hold has changed",
                 )
             ]
         case Incomparable(reason):
