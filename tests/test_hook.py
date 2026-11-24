@@ -1,4 +1,4 @@
-"""Behaviour of the coupled-tags-hook command, run as a program on a hook event, as Claude Code
+"""Behaviour of the coupled-hook command, run as a program on a hook event, as Claude Code
 runs it. What it decides from a file's text is tested in test_hook_core.py.
 
 Each test writes a git work tree, and gives the hook its own session and temporary directory, so
@@ -26,7 +26,7 @@ class Repo:
         self.file("app.py", "import os", MARKED)
         self.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
         self.file(
-            "coupled-tags-registry.toml",
+            "coupled-registry.toml",
             "version = 1",
             '["COUPLED:upload-limit:"]',
             'relations = ["proxy >= app"]',
@@ -40,7 +40,7 @@ class Repo:
     def hook(self, event: dict[str, object]) -> dict[str, object] | None:
         """The hook's JSON reply to event, or None if it said nothing."""
         done = subprocess.run(
-            [sys.executable, "-c", "from coupled_tags_lint.__main__ import hook; hook()"],
+            [sys.executable, "-c", "from coupled.__main__ import hook; hook()"],
             input=json.dumps(event),
             env={**os.environ, "TMPDIR": str(self.state)},
             capture_output=True,
@@ -127,7 +127,7 @@ def test_each_session_is_shown_a_group_once(repo: Repo) -> None:
 
 def test_files_the_settings_exclude_are_left_alone(repo: Repo) -> None:
     repo.file("docs/example.md", "COUPLED:upload-limit: example")
-    repo.file(".config/coupled-tags.toml", "version = 1", 'exclude = ["docs"]')
+    repo.file(".config/coupled.toml", "version = 1", 'exclude = ["docs"]')
     assert repo.read("s1", "docs/example.md") is None
     assert "docs/example.md" not in str(_output(repo.read("s2", "app.py"))["additionalContext"])
 
@@ -140,7 +140,7 @@ def test_files_holding_the_ignore_directive_are_left_alone(repo: Repo) -> None:
 
 
 def test_the_registry_itself_is_left_alone(repo: Repo) -> None:
-    assert repo.read("s1", "coupled-tags-registry.toml") is None
+    assert repo.read("s1", "coupled-registry.toml") is None
 
 
 def test_other_tools_and_events_pass_silently(repo: Repo) -> None:
@@ -155,10 +155,10 @@ def test_other_tools_and_events_pass_silently(repo: Repo) -> None:
 
 def test_a_failure_is_told_to_the_user_and_lets_the_call_through(repo: Repo) -> None:
     done = subprocess.run(
-        [sys.executable, "-c", "from coupled_tags_lint.__main__ import hook; hook()"],
+        [sys.executable, "-c", "from coupled.__main__ import hook; hook()"],
         input="not json",
         capture_output=True,
         text=True,
     )
     assert done.returncode == 0
-    assert "The coupled-tags hook failed" in json.loads(done.stdout)["systemMessage"]
+    assert "The coupled hook failed" in json.loads(done.stdout)["systemMessage"]

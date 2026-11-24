@@ -1,9 +1,9 @@
-# coupled-tags-lint
+# coupled
 
-Checks the COUPLED groups in a repository: values or code in several places that must change together but can't share a single source of truth. Each place carries a marker, `COUPLED:<key>: <label>`, and the repository's registry, `coupled-tags-registry.toml`, describes each group: how its sites relate, and the files in it that can't hold a marker. The lint checks that markers and registry agree, that the relations between values hold, and that no group has changed since it was last reviewed. It also gives Claude Code two hooks that show Claude a group before it edits one of its sites. The convention, and the Claude Code skill that goes with it, are in [coupled-tags](https://github.com/ianflanagan1/coupled-tags).
+Checks the COUPLED groups in a repository: values or code in several places that must change together but can't share a single source of truth. Each place carries a marker, `COUPLED:<key>: <label>`, and the repository's registry, `coupled-registry.toml`, describes each group: how its sites relate, and the files in it that can't hold a marker. The lint checks that markers and registry agree, that the relations between values hold, and that no group has changed since it was last reviewed. It also gives Claude Code two hooks that show Claude a group before it edits one of its sites. The convention, and the Claude Code skill that goes with it, are in [coupled-tags](https://github.com/ianflanagan1/coupled-tags).
 
 ```
-$ coupled-tags-lint
+$ coupled
 ⚠️ 1 problem in COUPLED groups.
 nginx.conf:1 `proxy >= app` doesn't hold with app.py:1: 10m >= 12
 ```
@@ -19,7 +19,7 @@ client_max_body_size 10m;  # COUPLED:upload-limit: proxy
 MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app
 ```
 ```toml
-# coupled-tags-registry.toml
+# coupled-registry.toml
 version = 1
 
 ["COUPLED:upload-limit:"]
@@ -77,21 +77,21 @@ It does **not** look at diffs. Diff-aware enforcement in the style of Google's `
 ## Usage
 
 ```sh
-coupled-tags-lint            # check the current directory
-coupled-tags-lint -l         # also list every key and its sites
-coupled-tags-lint -x docs/   # exclude a path prefix, besides the settings file's (repeatable)
-coupled-tags-lint --fix      # write or drop the message after each label, as the settings say, then check
-coupled-tags-lint --update upload-limit   # record a group you've reviewed, then check (repeatable)
+coupled            # check the current directory
+coupled -l         # also list every key and its sites
+coupled -x docs/   # exclude a path prefix, besides the settings file's (repeatable)
+coupled --fix      # write or drop the message after each label, as the settings say, then check
+coupled --update upload-limit   # record a group you've reviewed, then check (repeatable)
 ```
 
 In a git work tree it scans tracked files plus untracked files that aren't ignored. Elsewhere it uses `grep --recursive`, skipping `.git`, `node_modules` and `vendor`. It ends with one status line: `➖` and exit status 0 when clean, `⚠️` and the problems, one per line, with exit status 1 when it finds any. A usage error exits with 2.
 
 ## Settings
 
-A repository sets the paths to exclude on every run, where its registry is, and whether markers carry a message, in `.config/coupled-tags.toml`, committed with its code:
+A repository sets the paths to exclude on every run, where its registry is, and whether markers carry a message, in `.config/coupled.toml`, committed with its code:
 
 ```toml
-#:schema https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/coupled-tags.v1.json
+#:schema https://raw.githubusercontent.com/ianflanagan1/coupled/main/schema/coupled.v1.json
 version = 1
 exclude = ["docs", "tests/fixtures"]
 registry-file = ".config/coupled.toml"
@@ -101,20 +101,20 @@ tag-pointer = true
 
 - `version`: the version of the file's format, which is 1.
 - `exclude`: path prefixes, relative to the directory scanned, whose markers aren't checked, such as examples and test fixtures. None by default.
-- `registry-file`: the registry's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `coupled-tags-registry.toml` by default. The lint doesn't move a registry: when you change this, move the file too.
+- `registry-file`: the registry's path, relative to the directory scanned and inside it, so not absolute and with no `..`. `coupled-registry.toml` by default. The lint doesn't move a registry: when you change this, move the file too.
 - `tag-relations` and `tag-pointer`: what follows each marker's label, each `false` by default. `tag-relations` gives the site's own relations as seen from it, so any reader, a person in an editor among them, sees what must hold without opening the registry. `tag-pointer` says what to search for and which file describes the group, for a reader who doesn't know the convention, such as an AI agent without the coupled-tags skill or its hooks; a reader who knows it can do without. With both on, the relations come first. A site no relation names gets no relations. `--fix` writes the message from the registry, or drops it when both are off, and the lint reports one that differs from what `--fix` would write, so it's never stale:
 
   ```python
   MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy.
-  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Change only with every "COUPLED:upload-limit:" site, per coupled-tags-registry.toml.
-  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy. Change only with every "COUPLED:upload-limit:" site, per coupled-tags-registry.toml.
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Change only with every "COUPLED:upload-limit:" site, per coupled-registry.toml.
+  MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app. Must be <= proxy. Change only with every "COUPLED:upload-limit:" site, per coupled-registry.toml.
   ```
 
 The file is optional. The lint reads the copy on disk in the directory it scans, so a branch that adds fixtures can exclude them in the same change. A file that isn't valid TOML, has no `version` or one the lint doesn't read, holds a setting it doesn't know, or names a registry outside the repository stops the run with `⚠️` and exit status 1, before anything is changed. It's read with [repo-settings](https://github.com/ianflanagan1/repo-settings), and its schema is in `schema/`.
 
 ## The Claude Code hooks
 
-`coupled-tags-hook` is a Claude Code hook, for two events:
+`coupled-hook` is a Claude Code hook, for two events:
 
 - **the gate**, as `PreToolUse` on `Write|Edit|MultiEdit`: the first call in a session that changes a marked line, the line a marker describes, or a line of a marked block, is denied, with each touched group's sites and table as the reason. Claude reads them, changes the group together, and retries.
 - **the context hook**, as `PostToolUse` on `Read`: when Claude reads a file holding markers, the hook adds each group's sites and table to Claude's context.
@@ -124,23 +124,23 @@ A group either hook shows isn't shown again in the session, so the gate rarely f
 ```json
 {
   "hooks": {
-    "PreToolUse": [{ "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "\"$HOME/projects/cli/coupled-tags-lint/.venv/bin/coupled-tags-hook\"" }] }],
-    "PostToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command", "command": "\"$HOME/projects/cli/coupled-tags-lint/.venv/bin/coupled-tags-hook\"" }] }]
+    "PreToolUse": [{ "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "\"$HOME/projects/cli/coupled/.venv/bin/coupled-hook\"" }] }],
+    "PostToolUse": [{ "matcher": "Read", "hooks": [{ "type": "command", "command": "\"$HOME/projects/cli/coupled/.venv/bin/coupled-hook\"" }] }]
   }
 }
 ```
 
 ## Adding it to a project
 
-This repository is a Nix flake that packages the lint as the `coupled-tags-lint` command, with the Python, `tomlkit`, `git` and `grep` it uses pinned, so it behaves the same on macOS, Linux and CI. Add a release of it to a project's devbox:
+This repository is a Nix flake that packages the lint as the `coupled` command, with the Python, `tomlkit`, `git` and `grep` it uses pinned, so it behaves the same on macOS, Linux and CI. Add a release of it to a project's devbox:
 
 ```sh
-devbox add github:ianflanagan1/coupled-tags-lint/v0.2.0#coupled-tags-lint
+devbox add github:ianflanagan1/coupled/v0.2.0#coupled
 ```
 
-Then run `coupled-tags-lint` in the project's check, as a step of its Taskfile `check` task, so CI runs it too, and commit the registry.
+Then run `coupled` in the project's check, as a step of its Taskfile `check` task, so CI runs it too, and commit the registry.
 
-To move to a new release, change the tag in `devbox.json` and run `devbox update`. Without devbox, `nix run github:ianflanagan1/coupled-tags-lint` runs it once.
+To move to a new release, change the tag in `devbox.json` and run `devbox update`. Without devbox, `nix run github:ianflanagan1/coupled` runs it once.
 
 ## Reviewing changes to the registry
 
@@ -151,8 +151,8 @@ The lint can't do this on its own: anything that passes the build, an agent can 
 1. Give the registry an owner in `.github/CODEOWNERS`, along with the files that could switch the check off:
 
    ```
-   /coupled-tags-registry.toml @<owner>
-   /.config/coupled-tags.toml  @<owner>
+   /coupled-registry.toml @<owner>
+   /.config/coupled.toml  @<owner>
    /Taskfile.yml               @<owner>
    /devbox.json                @<owner>
    /.github/workflows/         @<owner>
@@ -170,11 +170,11 @@ GitHub reads `CODEOWNERS` from the pull request's base branch, so a pull request
 ## Installing it for yourself
 
 ```sh
-cd ~/projects/cli/coupled-tags-lint
-devbox run -- task setup   # uv sync, then link coupled-tags-lint into ~/.local/bin
+cd ~/projects/cli/coupled
+devbox run -- task setup   # uv sync, then link coupled into ~/.local/bin
 ```
 
-`task setup` also puts `coupled-tags-hook` in `.venv/bin`, where the hooks above run it from.
+`task setup` also puts `coupled-hook` in `.venv/bin`, where the hooks above run it from.
 
 ## Development
 
@@ -187,6 +187,6 @@ devbox run -- task copy-demo   # copy examples/demo into a new git repository, a
 
 `examples/demo` is a small project using every form of marker and relation, in several comment syntaxes. Try the lint and the hooks on the copy `task copy-demo` makes: in place, the demo is inside this repository, whose settings exclude it.
 
-`src/coupled_tags_lint/core/` finds markers, parses the registry and its relations, reads values and blocks, checks groups, writes the message after a label, compares groups with the reviewed section, and decides what the hooks show, as pure functions. `orchestrators/lint.py` gathers the files holding markers, the registry, the files it names and the settings through its ports, and writes the fixed markers and the reviewed section; `orchestrators/hook.py` gathers a group's sites and table for the hooks. `adapters/` holds git grep, the file system, the settings file, the session's shown groups, the command line and the hook's JSON; `__main__.py` wires them.
+`src/coupled/core/` finds markers, parses the registry and its relations, reads values and blocks, checks groups, writes the message after a label, compares groups with the reviewed section, and decides what the hooks show, as pure functions. `orchestrators/lint.py` gathers the files holding markers, the registry, the files it names and the settings through its ports, and writes the fixed markers and the reviewed section; `orchestrators/hook.py` gathers a group's sites and table for the hooks. `adapters/` holds git grep, the file system, the settings file, the session's shown groups, the command line and the hook's JSON; `__main__.py` wires them.
 
 To release, raise `version` in `pyproject.toml`, commit, then run `github release . patch|minor|major`. Projects move to it by changing their tag.

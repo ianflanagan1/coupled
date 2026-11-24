@@ -1,13 +1,13 @@
 [project]
-name = "coupled-tags-lint"
+name = "coupled"
 version = "0.2.0"
 description = "Checks the COUPLED:<key>: <label> markers in a repository against its registry of groups, and gives Claude Code hooks for them."
 requires-python = ">=3.13"
 dependencies = ["cli-kit", "repo-settings"]
 
 [project.scripts]
-coupled-tags-lint = "coupled_tags_lint.__main__:main"
-coupled-tags-hook = "coupled_tags_lint.__main__:hook"
+coupled = "coupled.__main__:main"
+coupled-hook = "coupled.__main__:hook"
 
 [tool.uv.sources]
 # COUPLED:cli-kit-version: pyproject

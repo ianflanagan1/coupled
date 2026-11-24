@@ -1,4 +1,4 @@
-from coupled_tags_lint.core.settings import (
+from coupled.core.settings import (
     REGISTRY_FILE,
     Invalid,
     Read,
@@ -8,7 +8,7 @@ from coupled_tags_lint.core.settings import (
     settings,
 )
 
-WHERE = ".config/coupled-tags.toml"
+WHERE = ".config/coupled.toml"
 OFF = TagMessage(pointer=False, relations=False)
 
 
@@ -65,12 +65,12 @@ def test_an_empty_excluded_path_is_invalid() -> None:
 
 def test_a_file_that_names_no_registry_uses_the_registry_at_the_root() -> None:
     found = settings(read({"exclude": ["docs"]}))
-    assert found == Settings(["docs"], "coupled-tags-registry.toml", OFF)
+    assert found == Settings(["docs"], "coupled-registry.toml", OFF)
 
 
 def test_the_path_under_registry_is_the_registry() -> None:
-    found = settings(read({"registry-file": ".config/coupled.toml"}))
-    assert found == Settings([], ".config/coupled.toml", OFF)
+    found = settings(read({"registry-file": ".config/coupled-registry.toml"}))
+    assert found == Settings([], ".config/coupled-registry.toml", OFF)
 
 
 def test_a_registry_that_is_not_text_is_invalid() -> None:

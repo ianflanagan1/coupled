@@ -1,4 +1,4 @@
-"""The registry: a repository's record of its COUPLED groups, `coupled-tags-registry.toml` by
+"""The registry: a repository's record of its COUPLED groups, `coupled-registry.toml` by
 default.
 
     version = 1
@@ -29,8 +29,8 @@ import tomllib
 from dataclasses import dataclass
 from typing import final
 
-from coupled_tags_lint.core.markers import NAME_PATTERN
-from coupled_tags_lint.core.relations import (
+from coupled.core.markers import NAME_PATTERN
+from coupled.core.relations import (
     FileRef,
     Relation,
     parse_file,
@@ -39,8 +39,7 @@ from coupled_tags_lint.core.relations import (
 )
 
 REVIEWED_HEADER = (
-    "# Written by coupled-tags-lint --update: each group as it was last reviewed. Don't edit "
-    "below this line."
+    "# Written by coupled --update: each group as it was last reviewed. Don't edit below this line."
 )
 
 _VERSION = 1

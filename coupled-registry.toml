@@ -1,8 +1,8 @@
 # COUPLED groups: values or code in several places that must change together. Each table is a
 # group, named as its markers are searched for; its relations relate the sites, by the labels
 # on their markers (`COUPLED:<key>: <label>`). Before changing a marked line, read every site
-# of its group, change them together so every relation holds, then run coupled-tags-lint. See
-# https://github.com/ianflanagan1/coupled-tags-lint.
+# of its group, change them together so every relation holds, then run `coupled`. See
+# https://github.com/ianflanagan1/coupled.
 version = 1
 
 ["COUPLED:cli-kit-version:"]
@@ -17,7 +17,7 @@ select = { flake = 'git-default-branch/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"
 relations = ["="]
 select = { flake = 'repo-settings/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"' }
 
-# Written by coupled-tags-lint --update: each group as it was last reviewed. Don't edit below this line.
+# Written by coupled --update: each group as it was last reviewed. Don't edit below this line.
 
 [reviewed."COUPLED:cli-kit-version:"]
 definition = "1ff1fb538e1e30b2"

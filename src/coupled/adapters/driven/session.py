@@ -1,5 +1,5 @@
 """Which COUPLED groups a Claude Code session has been shown, as a marker file per key in
-$TMPDIR/claude-coupled-tags/<session>/."""
+$TMPDIR/claude-coupled/<session>/."""
 
 import os
 import re
@@ -13,7 +13,7 @@ class SessionMarks:
         """The keys the session hasn't been shown yet, which are marked shown."""
         state = os.path.join(
             tempfile.gettempdir(),
-            "claude-coupled-tags",
+            "claude-coupled",
             re.sub(r"[^A-Za-z0-9_-]", "_", session) or "unknown",
         )
         os.makedirs(state, exist_ok=True)

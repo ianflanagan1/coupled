@@ -1,4 +1,4 @@
-from coupled_tags_lint.core.markers import End, Found, Malformed, Marker, find_markers
+from coupled.core.markers import End, Found, Malformed, Marker, find_markers
 
 
 def found(*lines: str) -> list[Found]:

@@ -1,4 +1,4 @@
-"""The coupled-tags-hook command: a Claude Code hook, reading the hook's event as JSON on stdin.
+"""The coupled-hook command: a Claude Code hook, reading the hook's event as JSON on stdin.
 
 Registered as PreToolUse on Write|Edit|MultiEdit, it's the gate: it denies the first call in a
 session that changes a line a COUPLED marker covers, giving the group's sites and table as the
@@ -12,8 +12,8 @@ It doesn't see edits or reads made through Bash.
 import json
 import os
 
-from coupled_tags_lint.core.hook import Change, Replace, Rewrite
-from coupled_tags_lint.orchestrators.hook import Hook
+from coupled.core.hook import Change, Replace, Rewrite
+from coupled.orchestrators.hook import Hook
 
 _EDITS = ("Edit", "MultiEdit", "Write")
 
@@ -24,7 +24,7 @@ def run(hook: Hook, event_text: str) -> int:
     except Exception as error:  # The catch-all for the hook's one invocation.
         output = {
             "systemMessage": (
-                f"The coupled-tags hook failed, so it didn't check this call for COUPLED "
+                f"The coupled hook failed, so it didn't check this call for COUPLED "
                 f"groups: {error!r}"
             )
         }

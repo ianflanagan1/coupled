@@ -7,11 +7,11 @@ left alone."""
 import os
 from typing import Protocol, final
 
-from coupled_tags_lint.core import hook
-from coupled_tags_lint.core.markers import ignores_file
-from coupled_tags_lint.core.registry import entry_text
-from coupled_tags_lint.core.review import excluded
-from coupled_tags_lint.core.settings import Invalid, Read, Settings, defaults, settings
+from coupled.core import hook
+from coupled.core.markers import ignores_file
+from coupled.core.registry import entry_text
+from coupled.core.review import excluded
+from coupled.core.settings import Invalid, Read, Settings, defaults, settings
 
 
 class Repositories(Protocol):

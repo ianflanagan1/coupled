@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/coupled-tags.v1.json",
-  "title": ".config/coupled-tags.toml, version 1",
-  "description": "A repository's settings for its COUPLED markers, for coupled-tags-lint, which reads the copy on disk in the directory it scans. See coupled-tags-lint's README.",
+  "$id": "https://raw.githubusercontent.com/ianflanagan1/coupled/main/schema/coupled.v1.json",
+  "title": ".config/coupled.toml, version 1",
+  "description": "A repository's settings for its COUPLED markers, for coupled, which reads the copy on disk in the directory it scans. See coupled's README.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -26,7 +26,7 @@
       "description": "The registry's path from the repository's root, with no `.` or `..` part, so it's inside the repository.",
       "type": "string",
       "minLength": 1,
-      "default": "coupled-tags-registry.toml"
+      "default": "coupled-registry.toml"
     },
     "tag-relations": {
       "description": "Whether each marker's label is followed by its site's relations, as seen from it, so any reader sees what must hold where the value is edited. --fix writes or drops them.",

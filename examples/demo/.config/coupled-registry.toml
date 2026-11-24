@@ -49,7 +49,7 @@ why = "the table stores, the model reads and the web receives one upload record,
 relations = ["web subset-of app"]
 why = "the web shows only statuses the app can give an upload"
 
-# Written by coupled-tags-lint --update: each group as it was last reviewed. Don't edit below this line.
+# Written by coupled --update: each group as it was last reviewed. Don't edit below this line.
 
 [reviewed."COUPLED:breakpoint:"]
 definition = "5b394c04a69fd9d0"

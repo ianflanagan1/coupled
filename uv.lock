@@ -17,7 +17,7 @@ wheels = [
 ]
 
 [[package]]
-name = "coupled-tags-lint"
+name = "coupled"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [

@@ -18,10 +18,10 @@ lint reports a message that differs from what it would write. When the settings 
 import re
 from typing import assert_never
 
-from coupled_tags_lint.core.comments import CLOSERS
-from coupled_tags_lint.core.markers import Marker, find_markers
-from coupled_tags_lint.core.registry import Group, Registry, Unparseable
-from coupled_tags_lint.core.relations import (
+from coupled.core.comments import CLOSERS
+from coupled.core.markers import Marker, find_markers
+from coupled.core.registry import Group, Registry, Unparseable
+from coupled.core.relations import (
     Arith,
     Bare,
     Equation,
@@ -32,7 +32,7 @@ from coupled_tags_lint.core.relations import (
     ValueOp,
     ref_text,
 )
-from coupled_tags_lint.core.settings import TagMessage
+from coupled.core.settings import TagMessage
 
 _OPS = "|".join(re.escape(op.value) for op in (*ValueOp, *StructuralOp))
 _POINTER = r'Change only with every "COUPLED:[^"]*" site, per \S+?\.(?=\s|$)'

@@ -1,5 +1,5 @@
 {
-  description = "coupled-tags-lint: check the COUPLED:<key>: <label> markers in a repository against its registry, and that their relations hold";
+  description = "coupled: check the COUPLED:<key>: <label> markers in a repository against its registry, and that their relations hold";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   # COUPLED:cli-kit-version: flake
@@ -19,16 +19,16 @@
         # Python and the tools the lint calls are pinned, so it behaves the same on macOS, Linux and CI.
         # cli-kit and git-default-branch use only the standard library, so their source on the path
         # is all they need; repo-settings, which reads the settings file, also imports tomlkit.
-        coupled-tags-lint = let
+        coupled = let
           python = pkgs.python313.withPackages (packages: [ packages.tomlkit ]);
         in pkgs.writeShellApplication {
-          name = "coupled-tags-lint";
+          name = "coupled";
           runtimeInputs = [ pkgs.git pkgs.gnugrep ];
           text = ''
-            PYTHONPATH=${./src}:${cli-kit}/src:${repo-settings}/src:${git-default-branch}/src exec ${python}/bin/python3 -s -P -m coupled_tags_lint "$@"
+            PYTHONPATH=${./src}:${cli-kit}/src:${repo-settings}/src:${git-default-branch}/src exec ${python}/bin/python3 -s -P -m coupled "$@"
           '';
         };
-        default = coupled-tags-lint;
+        default = coupled;
       });
     };
 }

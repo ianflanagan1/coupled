@@ -13,7 +13,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import assert_never, final
 
-from coupled_tags_lint.core.markers import NAME_PATTERN
+from coupled.core.markers import NAME_PATTERN
 
 
 class ValueOp(StrEnum):

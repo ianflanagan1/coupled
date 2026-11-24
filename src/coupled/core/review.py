@@ -12,7 +12,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import assert_never, final
 
-from coupled_tags_lint.core.check import (
+from coupled.core.check import (
     Content,
     FileRead,
     Missing,
@@ -21,9 +21,9 @@ from coupled_tags_lint.core.check import (
     is_value_group,
     labelled,
 )
-from coupled_tags_lint.core.markers import marker_text
-from coupled_tags_lint.core.registry import Registry, Reviewed, ReviewedSite, table_name
-from coupled_tags_lint.core.values import Value, json_at, read_value, unit_of
+from coupled.core.markers import marker_text
+from coupled.core.registry import Registry, Reviewed, ReviewedSite, table_name
+from coupled.core.values import Value, json_at, read_value, unit_of
 
 
 def update(key: str) -> str:

@@ -7,9 +7,9 @@ aren't read."""
 from dataclasses import dataclass
 from typing import Protocol, final
 
-from coupled_tags_lint.core import registry as registries
-from coupled_tags_lint.core import review
-from coupled_tags_lint.core.check import (
+from coupled.core import registry as registries
+from coupled.core import review
+from coupled.core.check import (
     Content,
     FileRead,
     Missing,
@@ -21,10 +21,10 @@ from coupled_tags_lint.core.check import (
     markers,
     unchecked,
 )
-from coupled_tags_lint.core.markers import Marker
-from coupled_tags_lint.core.registry import Registry, Unparseable
-from coupled_tags_lint.core.rewrite import wanted, with_messages
-from coupled_tags_lint.core.settings import Invalid, Read, Settings, settings
+from coupled.core.markers import Marker
+from coupled.core.registry import Registry, Unparseable
+from coupled.core.rewrite import wanted, with_messages
+from coupled.core.settings import Invalid, Read, Settings, settings
 
 
 class MarkerSearch(Protocol):

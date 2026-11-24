@@ -1,10 +1,10 @@
 """Reading a repository's settings file from the local disk with repo-settings, which finds
-.config/coupled-tags.toml and checks its version."""
+.config/coupled.toml and checks its version."""
 
 from pathlib import Path
 from typing import assert_never, final
 
-from coupled_tags_lint.core.settings import FILE, Invalid, Read, Version
+from coupled.core.settings import FILE, Invalid, Read, Version
 
 
 @final

@@ -1,10 +1,10 @@
-"""A repository's settings for its COUPLED tags, committed as .config/coupled-tags.toml:
+"""A repository's settings for its COUPLED tags, committed as .config/coupled.toml:
 
-    version = 1                             # the version of the file's format: see schema/
-    exclude = ["README.md", "tests"]        # path prefixes not checked; none by default
-    registry-file = ".config/coupled.toml"  # the registry; coupled-tags-registry.toml by default
-    tag-pointer = true                      # say where each label's group is: off by default
-    tag-relations = true                    # give each label's relations: off by default
+    version = 1                                      # the file format's version: see schema/
+    exclude = ["README.md", "tests"]                 # paths not checked; none by default
+    registry-file = ".config/coupled-registry.toml"  # coupled-registry.toml by default
+    tag-pointer = true                               # say where each group is; off by default
+    tag-relations = true                             # give each label's relations; off by default
 
 A repository needn't have the file. The paths it excludes are skipped on every run, so the check
 and --update can't disagree about them, nor about which file is the registry.
@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import assert_never, final
 
-FILE = ".config/coupled-tags.toml"
+FILE = ".config/coupled.toml"
 
 # The registry's path from the repository's root, unless the settings name another.
-REGISTRY_FILE = "coupled-tags-registry.toml"
+REGISTRY_FILE = "coupled-registry.toml"
 
 _KNOWN = ("exclude", "registry-file", "tag-pointer", "tag-relations")
 
@@ -36,7 +36,7 @@ class TagMessage:
 
 
 class Version(IntEnum):
-    """The versions of coupled-tags.toml's format the lint reads."""
+    """The versions of coupled.toml's format the lint reads."""
 
     V1 = 1
 

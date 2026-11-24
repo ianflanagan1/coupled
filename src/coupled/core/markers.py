@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import assert_never, final
 
-from coupled_tags_lint.core.comments import CLOSERS
+from coupled.core.comments import CLOSERS
 
 # A key or label: lowercase letters and digits, in words joined by single hyphens. A key
 # starting with a hyphen would read as an option to a search run on the key alone.

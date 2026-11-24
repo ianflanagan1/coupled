@@ -1,6 +1,6 @@
 """Which comment syntax a file is written in, and finding comments in its lines."""
 
-from coupled_tags_lint.core.comments import is_comment_line, strip_comment, syntax_of
+from coupled.core.comments import is_comment_line, strip_comment, syntax_of
 
 
 def test_code_is_kept_up_to_its_comment_in_each_language() -> None:

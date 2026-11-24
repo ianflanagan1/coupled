@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from coupled_tags_lint.core.registry import (
+from coupled.core.registry import (
     REVIEWED_HEADER,
     Registry,
     Reviewed,
@@ -10,7 +10,7 @@ from coupled_tags_lint.core.registry import (
     parse,
     with_reviewed,
 )
-from coupled_tags_lint.core.relations import (
+from coupled.core.relations import (
     Arith,
     Bare,
     Equation,

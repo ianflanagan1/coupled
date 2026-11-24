@@ -1,10 +1,10 @@
 import unittest
 from decimal import Decimal
 
-from coupled_tags_lint.core.comments import syntax_of
-from coupled_tags_lint.core.markers import find_markers
-from coupled_tags_lint.core.relations import Arith, Formula, ValueOp
-from coupled_tags_lint.core.values import (
+from coupled.core.comments import syntax_of
+from coupled.core.markers import find_markers
+from coupled.core.relations import Arith, Formula, ValueOp
+from coupled.core.values import (
     Fails,
     Holds,
     Incomparable,

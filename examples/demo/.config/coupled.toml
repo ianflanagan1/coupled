@@ -1,8 +1,8 @@
 version = 1
 # The registry lives beside these settings rather than at the root.
-registry-file = ".config/coupled-tags-registry.toml"  # COUPLED:registry-path: settings
+registry-file = ".config/coupled-registry.toml"  # COUPLED:registry-path: settings
 # tests/fixtures holds markers written wrong on purpose, which aren't sites.
 exclude = ["tests/fixtures"]
-# Turn either on and run `coupled-tags-lint --fix` to write each marker's message.
+# Turn either on and run `coupled --fix` to write each marker's message.
 tag-relations = false
 tag-pointer = false

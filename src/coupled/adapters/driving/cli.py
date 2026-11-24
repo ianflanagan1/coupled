@@ -1,4 +1,4 @@
-"""The coupled-tags-lint command line."""
+"""The coupled command line."""
 
 import os
 import re
@@ -6,11 +6,11 @@ import re
 from cli_kit import cli, outcome
 from cli_kit.outcome import Done, NothingToDo, Precondition
 
-from coupled_tags_lint.core.markers import NAME_PATTERN
-from coupled_tags_lint.core.settings import REGISTRY_FILE, Invalid
-from coupled_tags_lint.orchestrators.lint import Lint, Report
+from coupled.core.markers import NAME_PATTERN
+from coupled.core.settings import REGISTRY_FILE, Invalid
+from coupled.orchestrators.lint import Lint, Report
 
-_PROG = "coupled-tags-lint"
+_PROG = "coupled"
 
 _DESCRIPTION = f"""\
 Check the COUPLED:<key>: <label> markers in a repository against its registry.
@@ -29,12 +29,12 @@ structural op relates. A table changed, a site added or removed, a unit changed
 or a block edited is reported until the group is reviewed and recorded with
 --update <key>, which names each group it records.
 
-<dir>/.config/coupled-tags.toml, if it's there, sets beside version = 1 the
+<dir>/.config/coupled.toml, if it's there, sets beside version = 1 the
 path prefixes to exclude on every run, as exclude = ["docs", "tests"], the
-registry, as registry-file = ".config/coupled.toml", and what follows each marker's
-label: tag-relations = true for the site's own relations, and tag-pointer = true
-for what to search for and which file describes its group. Both are off by
-default. --fix writes the message.
+registry, as registry-file = ".config/coupled-registry.toml", and what
+follows each marker's label: tag-relations = true for the site's own relations,
+and tag-pointer = true for what to search for and which file describes its
+group. Both are off by default. --fix writes the message.
 
 Exit status: 0 clean, 1 problems found, 2 usage error."""
 

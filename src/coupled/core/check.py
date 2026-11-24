@@ -5,10 +5,10 @@ using value ops hold."""
 from dataclasses import dataclass
 from typing import assert_never, final
 
-from coupled_tags_lint.core.comments import syntax_of
-from coupled_tags_lint.core.markers import End, Found, Malformed, Marker, find_markers
-from coupled_tags_lint.core.registry import Group, Registry, Unparseable, table_name
-from coupled_tags_lint.core.relations import (
+from coupled.core.comments import syntax_of
+from coupled.core.markers import End, Found, Malformed, Marker, find_markers
+from coupled.core.registry import Group, Registry, Unparseable, table_name
+from coupled.core.relations import (
     Arith,
     Bare,
     Equation,
@@ -21,9 +21,9 @@ from coupled_tags_lint.core.relations import (
     ref_text,
     refs,
 )
-from coupled_tags_lint.core.rewrite import Wanted, wanted, written_after
-from coupled_tags_lint.core.settings import TagMessage
-from coupled_tags_lint.core.values import (
+from coupled.core.rewrite import Wanted, wanted, written_after
+from coupled.core.settings import TagMessage
+from coupled.core.values import (
     Fails,
     Holds,
     Incomparable,

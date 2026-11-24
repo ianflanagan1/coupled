@@ -1,6 +1,6 @@
 """What the hooks decide, given a file's text and the change a tool call makes to it."""
 
-from coupled_tags_lint.core.hook import (
+from coupled.core.hook import (
     MAX_SITES,
     Group,
     Replace,
@@ -66,22 +66,22 @@ def test_the_gate_reason_lists_each_group_s_sites_and_table() -> None:
         ["app.py:2:MAX = 8  # COUPLED:upload-limit: app"],
         '["COUPLED:upload-limit:"]\nrelations = ["proxy >= app"]',
     )
-    reason = gate_reason([group], "coupled-tags-registry.toml")
+    reason = gate_reason([group], "coupled-registry.toml")
     assert reason.startswith("This edit touches lines marked COUPLED:upload-limit:")
     assert "app.py:2:MAX = 8" in reason
-    assert 'Its table in coupled-tags-registry.toml:\n["COUPLED:upload-limit:"]' in reason
+    assert 'Its table in coupled-registry.toml:\n["COUPLED:upload-limit:"]' in reason
     assert "Then retry this call." in reason
 
 
 def test_a_group_found_outside_a_work_tree_says_what_to_search_for() -> None:
-    text = context("a.py", [Group("x", None, None)], "coupled-tags-registry.toml")
+    text = context("a.py", [Group("x", None, None)], "coupled-registry.toml")
     assert "Search for `COUPLED:x:`" in text
-    assert "It has no table in coupled-tags-registry.toml" in text
+    assert "It has no table in coupled-registry.toml" in text
 
 
 def test_a_long_list_of_sites_is_cut_short() -> None:
     sites = [f"a.py:{n}:X = 1  # COUPLED:x: s{n}" for n in range(MAX_SITES + 5)]
-    text = context("a.py", [Group("x", sites, None)], "coupled-tags-registry.toml")
+    text = context("a.py", [Group("x", sites, None)], "coupled-registry.toml")
     assert "... and 5 more" in text
 
 

@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import assert_never, final
 
-from coupled_tags_lint.core.comments import Syntax, is_comment_line, strip_comment
-from coupled_tags_lint.core.markers import Placed
-from coupled_tags_lint.core.relations import Arith, Formula, ValueOp
+from coupled.core.comments import Syntax, is_comment_line, strip_comment
+from coupled.core.markers import Placed
+from coupled.core.relations import Arith, Formula, ValueOp
 
 
 @final

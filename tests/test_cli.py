@@ -1,4 +1,4 @@
-"""Behaviour of the coupled-tags-lint command, run as a program. The rules for markers, the
+"""Behaviour of the coupled command, run as a program. The rules for markers, the
 registry and values are tested in test_markers.py, test_registry.py, test_values.py and
 test_check.py.
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-SETTINGS = ".config/coupled-tags.toml"
+SETTINGS = ".config/coupled.toml"
 DEMO = Path(__file__).parent.parent / "examples" / "demo"
 
 
@@ -41,7 +41,7 @@ class Sandbox:
         env = {**os.environ, "NO_COLOR": "1"}
         env.pop("FORCE_COLOR", None)
         done = subprocess.run(
-            [sys.executable, "-m", "coupled_tags_lint", *args],
+            [sys.executable, "-m", "coupled", *args],
             cwd=cwd or self.root,
             env=env,
             capture_output=True,
@@ -54,7 +54,7 @@ class Sandbox:
 
     def registry(self, *lines: str) -> None:
         """Writes the registry, its version and then the lines."""
-        self.file("coupled-tags-registry.toml", "version = 1", *lines)
+        self.file("coupled-registry.toml", "version = 1", *lines)
 
     def review(self, *keys: str) -> Ran:
         """Records the groups of keys as they are now in the registry's reviewed section."""
@@ -86,7 +86,7 @@ def assert_problem(ran: Ran, text: str) -> None:
 # --- Repositories
 
 UPLOAD = ('["COUPLED:upload-limit:"]', 'relations = ["proxy >= app"]')
-MESSAGE = 'Change only with every "COUPLED:upload-limit:" site, per coupled-tags-registry.toml.'
+MESSAGE = 'Change only with every "COUPLED:upload-limit:" site, per coupled-registry.toml.'
 
 
 def upload(sandbox: Sandbox, app_limit: int) -> None:
@@ -133,12 +133,12 @@ def test_a_search_for_the_key_finds_the_group_s_table_beside_its_sites(sandbox: 
         capture_output=True,
         text=True,
     ).stdout.split()
-    assert sorted(found) == ["./app.py", "./coupled-tags-registry.toml", "./nginx.conf"]
+    assert sorted(found) == ["./app.py", "./coupled-registry.toml", "./nginx.conf"]
 
 
 def test_markers_with_no_registry_are_reported(sandbox: Sandbox) -> None:
     sandbox.file("app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app")
-    assert_problem(sandbox.lint(), "coupled-tags-registry.toml There's no registry.")
+    assert_problem(sandbox.lint(), "coupled-registry.toml There's no registry.")
 
 
 def test_in_a_git_work_tree_ignored_files_are_skipped(sandbox: Sandbox) -> None:
@@ -197,30 +197,30 @@ def test_a_settings_file_with_no_version_is_reported_and_nothing_is_changed(
 ) -> None:
     upload(sandbox, 8)
     sandbox.file(SETTINGS, 'exclude = ["docs"]')
-    before = (sandbox.repo / "coupled-tags-registry.toml").read_text()
+    before = (sandbox.repo / "coupled-registry.toml").read_text()
     ran = sandbox.review("upload-limit")
     assert ran.status == 1
     assert ran.errors.startswith("⚠️ No version in ")
-    assert (sandbox.repo / "coupled-tags-registry.toml").read_text() == before
+    assert (sandbox.repo / "coupled-registry.toml").read_text() == before
 
 
 def test_a_setting_the_lint_does_not_know_is_reported(sandbox: Sandbox) -> None:
     sandbox.file(SETTINGS, "version = 1", "skip = []")
-    assert_problem(sandbox.lint(), "coupled-tags.toml: skip.")
+    assert_problem(sandbox.lint(), "coupled.toml: skip.")
 
 
 def test_the_registry_is_the_file_the_settings_file_names(sandbox: Sandbox) -> None:
     sandbox.file("app.py", "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app")
     sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
-    sandbox.file(".config/coupled.toml", "version = 1", *UPLOAD)
-    sandbox.file(SETTINGS, "version = 1", 'registry-file = ".config/coupled.toml"')
+    sandbox.file(".config/coupled-registry.toml", "version = 1", *UPLOAD)
+    sandbox.file(SETTINGS, "version = 1", 'registry-file = ".config/coupled-registry.toml"')
     sandbox.review("upload-limit")
     assert_clean(sandbox.lint())
-    assert "[reviewed." in (sandbox.repo / ".config/coupled.toml").read_text()
+    assert "[reviewed." in (sandbox.repo / ".config/coupled-registry.toml").read_text()
 
 
 def test_a_registry_outside_the_repository_is_reported(sandbox: Sandbox) -> None:
-    sandbox.file(SETTINGS, "version = 1", 'registry-file = "../coupled.toml"')
+    sandbox.file(SETTINGS, "version = 1", 'registry-file = "../coupled-registry.toml"')
     assert_problem(sandbox.lint(), "must be the path of a file inside the repository")
 
 
@@ -333,16 +333,16 @@ def test_update_records_the_groups_in_the_registry(sandbox: Sandbox) -> None:
     upload(sandbox, 8)
     ran = sandbox.review("upload-limit")
     assert_clean(ran)
-    text = (sandbox.repo / "coupled-tags-registry.toml").read_text()
+    text = (sandbox.repo / "coupled-registry.toml").read_text()
     assert '[reviewed."COUPLED:upload-limit:"]' in text
     assert '"COUPLED:upload-limit: proxy" = { unit = "m" }' in text
-    assert "Updated coupled-tags-registry.toml." in ran.output
+    assert "Updated coupled-registry.toml." in ran.output
 
 
 def test_update_records_the_groups_even_when_relations_fail(sandbox: Sandbox) -> None:
     upload(sandbox, 12)
     ran = sandbox.review("upload-limit")
-    assert "Updated coupled-tags-registry.toml." in ran.errors
+    assert "Updated coupled-registry.toml." in ran.errors
     assert "hasn't been reviewed" not in ran.errors
 
 
@@ -401,7 +401,7 @@ def test_the_demo_project_reports_a_value_changed_at_one_site(sandbox: Sandbox) 
 def test_help_describes_the_options(sandbox: Sandbox) -> None:
     ran = sandbox.run("-h")
     assert ran.status == 0
-    assert "usage: coupled-tags-lint [-h] [-l] [-x <path>] [--fix] [--update <key>]" in ran.output
+    assert "usage: coupled [-h] [-l] [-x <path>] [--fix] [--update <key>]" in ran.output
     assert "exclude a path prefix" in ran.output
     assert "Exit status: 0 clean, 1 problems found, 2 usage error." in ran.output
 
@@ -420,9 +420,9 @@ def test_update_with_a_key_that_has_no_group_is_reported_and_records_nothing(
     sandbox: Sandbox,
 ) -> None:
     upload(sandbox, 8)
-    before = (sandbox.repo / "coupled-tags-registry.toml").read_text()
+    before = (sandbox.repo / "coupled-registry.toml").read_text()
     assert_problem(sandbox.review("upload-limt"), "there's no group COUPLED:upload-limt:")
-    assert (sandbox.repo / "coupled-tags-registry.toml").read_text() == before
+    assert (sandbox.repo / "coupled-registry.toml").read_text() == before
 
 
 def test_update_with_something_other_than_a_key_is_a_usage_error(sandbox: Sandbox) -> None:

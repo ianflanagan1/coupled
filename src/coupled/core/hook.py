@@ -11,9 +11,9 @@ import difflib
 from dataclasses import dataclass
 from typing import assert_never, final
 
-from coupled_tags_lint.core.comments import syntax_of
-from coupled_tags_lint.core.markers import End, Malformed, Marker, find_markers
-from coupled_tags_lint.core.values import described_line
+from coupled.core.comments import syntax_of
+from coupled.core.markers import End, Malformed, Marker, find_markers
+from coupled.core.values import described_line
 
 # At most this many sites are listed for a group, each cut to this length.
 MAX_SITES = 40
@@ -119,9 +119,9 @@ class Group:
 
 
 _ACT = (
-    "change them together so every relation still holds, then run coupled-tags-lint. Change a "
+    "change them together so every relation still holds, then run `coupled`. Change a "
     "group's table only if what must hold has changed, and once every site is reviewed, record "
-    "it with `coupled-tags-lint --update <key>`."
+    "it with `coupled --update <key>`."
 )
 
 
