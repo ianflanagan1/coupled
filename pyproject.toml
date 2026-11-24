@@ -1,6 +1,6 @@
 [project]
 name = "coupled"
-version = "0.2.0"
+version = "0.3.0"
 description = "Checks the COUPLED:<key>: <label> markers in a repository against its registry of groups, and gives Claude Code hooks for them."
 requires-python = ">=3.13"
 dependencies = ["cli-kit", "repo-settings"]
