@@ -1,4 +1,5 @@
 #:schema https://raw.githubusercontent.com/ianflanagan1/coupled-tags-lint/main/schema/ianf-coupled-tags.v1.json
 version = 1
-# The README's examples and the tests' fixtures are tags by design, some of them broken.
-exclude = ["README.md", "tests"]
+# The README's examples and the tests' fixtures are tags by design, some of them broken, and
+# examples/demo is a repository of its own, with its own registry.
+exclude = ["README.md", "examples", "tests"]

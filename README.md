@@ -151,10 +151,13 @@ devbox run -- task setup   # uv sync, then link coupled-tags-lint into ~/.local/
 ## Development
 
 ```sh
-devbox run -- task test    # pytest
-devbox run -- task lint    # ruff check and format
-devbox run -- task check   # lint, test, then build the flake and lint this repository's markers
+devbox run -- task test        # pytest
+devbox run -- task lint        # ruff check and format
+devbox run -- task check       # lint, test, then build the flake and lint this repository's markers
+devbox run -- task copy-demo   # copy examples/demo into a new git repository, and print its path
 ```
+
+`examples/demo` is a small project using every form of marker and relation, in several comment syntaxes. Try the lint and the hooks on the copy `task copy-demo` makes: in place, the demo is inside this repository, whose settings exclude it.
 
 `src/coupled_tags_lint/core/` finds markers, parses the registry and its relations, reads values and blocks, checks groups, writes the message after a label, compares groups with the reviewed section, and decides what the hooks show, as pure functions. `orchestrators/lint.py` gathers the files holding markers, the registry, the files it names and the settings through its ports, and writes the fixed markers and the reviewed section; `orchestrators/hook.py` gathers a group's sites and table for the hooks. `adapters/` holds git grep, the file system, the settings file, the session's shown groups, the command line and the hook's JSON; `__main__.py` wires them.
 

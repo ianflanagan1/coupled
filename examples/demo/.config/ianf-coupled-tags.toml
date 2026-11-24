@@ -1,0 +1,6 @@
+version = 1
+# docs/ quotes a marker as an example, which isn't a site.
+exclude = ["docs"]
+# Turn either on and run `coupled-tags-lint --fix` to write each marker's message.
+tag-relations = false
+tag-pointer = false

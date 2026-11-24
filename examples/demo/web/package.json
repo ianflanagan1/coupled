@@ -1,0 +1,7 @@
+{
+  "name": "upload-web",
+  "private": true,
+  "engines": {
+    "python-backend": "3.13"
+  }
+}

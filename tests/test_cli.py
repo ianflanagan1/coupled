@@ -8,6 +8,7 @@ back to grep. A test that reads the clean status line records the groups as revi
 """
 
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from pathlib import Path
 import pytest
 
 SETTINGS = ".config/ianf-coupled-tags.toml"
+DEMO = Path(__file__).parent.parent / "examples" / "demo"
 
 
 @dataclass(frozen=True)
@@ -370,6 +372,18 @@ def test_a_directory_with_no_markers_exits_zero(sandbox: Sandbox) -> None:
     ran = sandbox.lint()
     assert_clean(ran)
     assert ran.output == "➖ No COUPLED markers.\n"
+
+
+def test_the_demo_project_is_clean(sandbox: Sandbox) -> None:
+    shutil.copytree(DEMO, sandbox.repo, dirs_exist_ok=True)
+    assert_clean(sandbox.lint())
+
+
+def test_the_demo_project_reports_a_value_changed_at_one_site(sandbox: Sandbox) -> None:
+    shutil.copytree(DEMO, sandbox.repo, dirs_exist_ok=True)
+    settings = sandbox.repo / "app" / "settings.py"
+    settings.write_text(settings.read_text().replace("MAX_UPLOAD_MB = 8", "MAX_UPLOAD_MB = 12"))
+    assert_problem(sandbox.lint(), "`nginx >= app` doesn't hold")
 
 
 def test_help_describes_the_options(sandbox: Sandbox) -> None:

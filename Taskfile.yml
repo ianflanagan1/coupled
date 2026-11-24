@@ -35,10 +35,24 @@ tasks:
           esac
         done
 
+  copy-demo:
+    desc: Copy examples/demo into a new git repository in a temporary directory, to try the lint and the hooks on
+    cmds:
+      # In place, the demo is inside this repository, whose settings exclude it, so the hooks
+      # leave it alone, and --fix and --update would change the tracked copy.
+      - |
+        dir=$(mktemp -d)
+        cp -R examples/demo/. "$dir"
+        git -C "$dir" init --quiet
+        git -C "$dir" add --all
+        git -C "$dir" commit --quiet --message "The demo, as examples/demo has it"
+        echo "$dir"
+
   tags:
     desc: Build the flake, then lint this repository's tags with the command it packages
     cmds:
-      # .config/ianf-coupled-tags.toml excludes the README's examples and the tests' fixtures.
+      # .config/ianf-coupled-tags.toml excludes the README's examples, the tests' fixtures and
+      # examples/demo.
       - |
         out=$(nix --extra-experimental-features 'nix-command flakes' build .#coupled-tags-lint --no-link --print-out-paths)
         "$out/bin/coupled-tags-lint"

@@ -1,0 +1,93 @@
+version = 1
+
+# Value ops: a directive, an assignment, an HTML attribute picked out by a selector, and a JSON
+# file with a pointer.
+["COUPLED:upload-limit:"]
+relations = ["nginx >= app", "form = app", "app = ./config/limits.json#/upload_mb"]
+select = { form = 'data-max-mb="(\d+)"' }
+
+# A formula on the second value.
+["COUPLED:request-timeout:"]
+relations = ["proxy >= app + 5"]
+
+# A selector where the line holds more than one value.
+["COUPLED:port:"]
+relations = ["compose = app"]
+select = { compose = '"(\d+):' }
+
+# A bare op: every site and file is the same. The CI site gives only the major version, which
+# matches on the parts both give. A file marked `?` may be missing.
+["COUPLED:node-version:"]
+relations = ["="]
+files = ["./.nvmrc", "./.node-version?"]
+
+# Files alone, which can't hold a marker.
+["COUPLED:python-version:"]
+relations = ["./.python-version = ./web/package.json#/engines/python-backend"]
+
+# A selector for CSS, whose line the lint can't read a value from.
+["COUPLED:breakpoint:"]
+relations = ["css = ts"]
+select = { css = 'max-width: (\d+)px' }
+
+# Structural ops: blocks closed by END, recorded in the reviewed section rather than compared.
+["COUPLED:safe-name:"]
+relations = ["same-as"]
+
+["COUPLED:upload-shape:"]
+relations = [
+    "model same-shape table",
+    "type same-shape model",
+    "type same-shape //github.com/example/upload-api/schema/upload.json",
+]
+
+# Nested inside upload-shape's model block.
+["COUPLED:upload-status:"]
+relations = ["web subset-of app"]
+
+# Written by coupled-tags-lint --update: each group as it was last reviewed. Don't edit below this line.
+
+[reviewed."COUPLED:breakpoint:"]
+definition = "5b394c04a69fd9d0"
+"COUPLED:breakpoint: css" = {}
+"COUPLED:breakpoint: ts" = {}
+
+[reviewed."COUPLED:node-version:"]
+definition = "0b62cf14bb9403c1"
+"COUPLED:node-version: ci" = {}
+"COUPLED:node-version: docker" = {}
+
+[reviewed."COUPLED:port:"]
+definition = "07b3ccec236290ec"
+"COUPLED:port: app" = {}
+"COUPLED:port: compose" = {}
+
+[reviewed."COUPLED:python-version:"]
+definition = "6cf464bb0c64aed5"
+
+[reviewed."COUPLED:request-timeout:"]
+definition = "13986db4799dc2ee"
+"COUPLED:request-timeout: app" = {}
+"COUPLED:request-timeout: proxy" = { unit = "s" }
+
+[reviewed."COUPLED:safe-name:"]
+definition = "a9ef15eaffcfacf9"
+"COUPLED:safe-name: app" = { block = "9adaa5da1c4d92f2" }
+"COUPLED:safe-name: web" = { block = "53e7bdee3837dfb4" }
+
+[reviewed."COUPLED:upload-limit:"]
+definition = "a51b7f8ac418f130"
+"COUPLED:upload-limit: app" = {}
+"COUPLED:upload-limit: form" = {}
+"COUPLED:upload-limit: nginx" = { unit = "m" }
+
+[reviewed."COUPLED:upload-shape:"]
+definition = "50c5a87016d875d9"
+"COUPLED:upload-shape: model" = { block = "8b6be5970825b580" }
+"COUPLED:upload-shape: table" = { block = "a473ff02a396bd6b" }
+"COUPLED:upload-shape: type" = { block = "598a80c547fe978e" }
+
+[reviewed."COUPLED:upload-status:"]
+definition = "ef1659488f971a4e"
+"COUPLED:upload-status: app" = { block = "62b5bebf9ef30a24" }
+"COUPLED:upload-status: web" = { block = "03f31027443bdf8e" }

@@ -1,0 +1,9 @@
+.upload {
+  display: grid;
+}
+
+@media (max-width: 640px) { /* COUPLED:breakpoint: css */
+  .upload {
+    display: block;
+  }
+}
