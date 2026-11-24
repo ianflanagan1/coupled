@@ -269,6 +269,7 @@ def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
     sandbox.registry(
         '["COUPLED:listing-shape:"]',
         'relations = ["writer same-shape //github.com/me/rulebook/schema/coverage.json"]',
+        'why = "the rulebook reads the listing this writes"',
     )
     sandbox.review("listing-shape")
     ran = sandbox.lint()
@@ -353,20 +354,76 @@ def test_a_group_that_was_never_reviewed_is_reported(sandbox: Sandbox) -> None:
     assert_problem(sandbox.lint(), "COUPLED:upload-limit: hasn't been reviewed")
 
 
-def test_an_edited_structural_block_fails_until_it_is_reviewed(sandbox: Sandbox) -> None:
-    sandbox.file(
-        "a.py", "# COUPLED:vat: invoice", "def vat(n):", "    return n / 5", "# COUPLED:vat:END"
+def vat(sandbox: Sandbox, invoice_divisor: int, cart_divisor: int) -> None:
+    """Writes two copies of a function, each a site of COUPLED:vat:."""
+    for path, label, divisor in (
+        ("a.py", "invoice", invoice_divisor),
+        ("b.py", "cart", cart_divisor),
+    ):
+        sandbox.file(
+            path,
+            f"# COUPLED:vat: {label}",
+            "def vat(n):",
+            f"    return n / {divisor}",
+            "# COUPLED:vat:END",
+        )
+
+
+def vat_group(sandbox: Sandbox, op: str) -> None:
+    """Writes a registry relating the copies by op."""
+    sandbox.registry(
+        '["COUPLED:vat:"]',
+        f'relations = ["{op}"]',
+        'why = "an invoice and a cart must charge the same VAT"',
     )
-    sandbox.file(
-        "b.py", "# COUPLED:vat: cart", "def vat(n):", "    return n / 5", "# COUPLED:vat:END"
-    )
-    sandbox.registry('["COUPLED:vat:"]', 'relations = ["same-as"]')
+
+
+def test_an_edited_block_of_a_judged_group_fails_until_it_is_reviewed(sandbox: Sandbox) -> None:
+    vat(sandbox, 5, 5)
+    vat_group(sandbox, "same-as")
     sandbox.review("vat")
-    sandbox.file(
-        "a.py", "# COUPLED:vat: invoice", "def vat(n):", "    return n / 6", "# COUPLED:vat:END"
-    )
+    vat(sandbox, 6, 5)
     assert_problem(sandbox.lint(), "a.py:1 It has changed since it was last reviewed")
     sandbox.review("vat")
+    assert_clean(sandbox.lint())
+
+
+def test_a_judged_group_that_does_not_say_why_is_reported(sandbox: Sandbox) -> None:
+    vat(sandbox, 5, 5)
+    sandbox.registry('["COUPLED:vat:"]', 'relations = ["same-as"]')
+    assert_problem(sandbox.lint(), '["COUPLED:vat:"] Say why these sites are coupled')
+
+
+def test_blocks_of_a_text_group_changed_together_need_no_review(sandbox: Sandbox) -> None:
+    vat(sandbox, 5, 5)
+    vat_group(sandbox, "same-text")
+    sandbox.review("vat")
+    assert '"COUPLED:vat: invoice" = {}' in (sandbox.repo / "coupled-registry.toml").read_text()
+    vat(sandbox, 6, 6)
+    assert_clean(sandbox.lint())
+
+
+def test_a_block_of_a_text_group_changed_alone_is_reported(sandbox: Sandbox) -> None:
+    vat(sandbox, 5, 5)
+    vat_group(sandbox, "same-text")
+    sandbox.review("vat")
+    vat(sandbox, 5, 6)
+    assert_problem(
+        sandbox.lint(),
+        "b.py:1 `same-text` doesn't hold with a.py:1: `return n / 6` here is `return n / 5` there",
+    )
+
+
+def test_a_set_relation_that_fails_names_what_only_one_site_holds(sandbox: Sandbox) -> None:
+    sandbox.file("app.py", 'STATUSES = ["pending", "stored"]  # COUPLED:status: app')
+    sandbox.file("web.ts", "// COUPLED:status: web", 'type Status = "pending" | "archived";')
+    sandbox.registry('["COUPLED:status:"]', 'relations = ["web subset-of app"]')
+    sandbox.review("status")
+    assert_problem(
+        sandbox.lint(),
+        "web.ts:1 `web subset-of app` doesn't hold with app.py:1: `archived` is only here",
+    )
+    sandbox.file("web.ts", "// COUPLED:status: web", 'type Status = "pending";')
     assert_clean(sandbox.lint())
 
 
@@ -398,6 +455,20 @@ def test_the_demo_project_reports_a_value_changed_at_one_site(sandbox: Sandbox) 
     settings = sandbox.repo / "app" / "settings.py"
     settings.write_text(settings.read_text().replace("MAX_UPLOAD_MB = 8", "MAX_UPLOAD_MB = 12"))
     assert_problem(sandbox.lint(), "`nginx >= app` doesn't hold")
+
+
+def test_the_demo_project_reports_a_member_only_one_site_holds(sandbox: Sandbox) -> None:
+    shutil.copytree(DEMO, sandbox.repo, dirs_exist_ok=True)
+    types = sandbox.repo / "web" / "src" / "types.ts"
+    types.write_text(types.read_text().replace('"pending" |', '"pending" | "archived" |'))
+    assert_problem(sandbox.lint(), "`web subset-of app` doesn't hold with app/models.py:14")
+
+
+def test_the_demo_project_reports_text_changed_at_one_site(sandbox: Sandbox) -> None:
+    shutil.copytree(DEMO, sandbox.repo, dirs_exist_ok=True)
+    release = sandbox.repo / ".github" / "workflows" / "release.yml"
+    release.write_text(release.read_text().replace("checkout@v4", "checkout@v5"))
+    assert_problem(sandbox.lint(), "`same-text` doesn't hold with .github/workflows/")
 
 
 def test_help_describes_the_options(sandbox: Sandbox) -> None:

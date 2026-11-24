@@ -22,19 +22,22 @@ from coupled.core.comments import CLOSERS
 from coupled.core.markers import Marker, find_markers
 from coupled.core.registry import Group, Registry, Unparseable
 from coupled.core.relations import (
+    OPS,
     Arith,
     Bare,
     Equation,
     Formula,
+    JudgedOp,
     Label,
     Op,
-    StructuralOp,
+    SetOp,
+    TextOp,
     ValueOp,
     ref_text,
 )
 from coupled.core.settings import MarkerMessage
 
-_OPS = "|".join(re.escape(op.value) for op in (*ValueOp, *StructuralOp))
+_OPS = "|".join(re.escape(op) for op in OPS)
 _POINTER = r'Change only with every "COUPLED:[^"]*" site, per \S+?\.(?=\s|$)'
 # A message's relations start with an op, so prose after a label, such as "Must be in MB.",
 # isn't taken for one.
@@ -123,7 +126,14 @@ def _inverse(formula: Formula | None) -> Formula | None:
 def _flipped(op: Op) -> Op:
     """op from the other side: `a < b` is `b > a`."""
     match op:
-        case ValueOp.EQ | ValueOp.NE | StructuralOp.SAME_AS | StructuralOp.SAME_SHAPE:
+        case (
+            ValueOp.EQ
+            | ValueOp.NE
+            | SetOp.SAME_SET
+            | TextOp.SAME_TEXT
+            | JudgedOp.SAME_AS
+            | JudgedOp.SAME_SHAPE
+        ):
             return op
         case ValueOp.LT:
             return ValueOp.GT
@@ -133,10 +143,14 @@ def _flipped(op: Op) -> Op:
             return ValueOp.LT
         case ValueOp.GE:
             return ValueOp.LE
-        case StructuralOp.SUBSET_OF:
-            return StructuralOp.SUPERSET_OF
-        case StructuralOp.SUPERSET_OF:
-            return StructuralOp.SUBSET_OF
+        case SetOp.SUBSET_OF:
+            return SetOp.SUPERSET_OF
+        case SetOp.SUPERSET_OF:
+            return SetOp.SUBSET_OF
+        case JudgedOp.DESCRIPTION_OF:
+            return JudgedOp.DESCRIBED_BY
+        case JudgedOp.DESCRIBED_BY:
+            return JudgedOp.DESCRIPTION_OF
         case _:
             assert_never(op)
 

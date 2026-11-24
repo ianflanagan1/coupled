@@ -12,14 +12,14 @@ Each group is a table named as the marker's key is searched for, so a search for
 `COUPLED:upload-limit:` finds the group's table beside its sites. `relations` relates its sites,
 by their markers' labels, and the files that can't hold a marker (see relations.py); `files`
 lists files in the group that no relation names, for a group whose relation is a bare op;
-`select` gives a regex picking a site's value out of its line, by its label; `why` says why the
-sites must change together, which the lint and the hooks show beside them and which isn't part
-of what's reviewed.
+`select` gives a regex, by a site's label, picking its value out of its line, or each of its
+members out of its block; `why` says why the sites must change together, which the lint and the
+hooks show beside them and which isn't part of what's reviewed.
 
 Below the groups, `--update` writes the reviewed section: each group as it was last reviewed, by
 a fingerprint of its table, and each of its sites, with the unit on its value in a group of
-value ops, or a fingerprint of its block in a group of structural ops. A group that differs from
-it fails until it's reviewed and recorded again.
+value ops, or a fingerprint of its block in a group of judged ops. A group that differs from it
+fails until it's reviewed and recorded again.
 """
 
 import hashlib

@@ -1,14 +1,16 @@
-"""Reading the value a marker describes, and comparing two values under an op and formula."""
+"""Reading what a marker describes, as a group's ops need it, and comparing two of them: a
+single value under an op and formula, the names in a block as a set, or a block's text."""
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal, DivisionByZero, InvalidOperation
 from typing import assert_never, final
 
 from coupled.core.comments import Syntax, is_comment_line, strip_comment
 from coupled.core.markers import Placed
-from coupled.core.relations import Arith, Formula, ValueOp
+from coupled.core.relations import Arith, Formula, SetOp, ValueOp
 
 
 @final
@@ -26,6 +28,24 @@ class Unreadable:
 
 
 type Reading = Value | Unreadable
+
+
+@final
+@dataclass(frozen=True)
+class Members:
+    """The distinct names read at a site or in a file, in the order found."""
+
+    names: tuple[str, ...]
+
+
+@final
+@dataclass(frozen=True)
+class Text:
+    """The text at a site or in a file: its lines, each without the whitespace around it, and
+    without the blank ones, so that its indentation isn't part of it."""
+
+    lines: tuple[str, ...]
+
 
 _QUOTED = re.compile(r"'([^']*)'|\"([^\"]*)\"|`([^`]*)`")
 _IMAGE = re.compile(r"(?:^\s*FROM\s+(?:--\S+\s+)*|\bimage:\s*)[^\s:]+:v?(\d+(?:\.\d+)*)")
@@ -125,10 +145,62 @@ def read_file_value(content: str, pointer: str | None) -> Reading | None:
     at = _resolve(node, pointer)
     if at is None:
         return Unreadable(f"it has nothing at #{pointer}")
-    node = at.node
-    if isinstance(node, bool) or not isinstance(node, str | int | float):
+    if not _is_scalar(at.node):
         return Unreadable(f"#{pointer} isn't a string or number")
-    return Value(str(node))
+    return Value(str(at.node))
+
+
+def read_members(block: tuple[str, ...], selector: str | None) -> Members | Unreadable:
+    """The names in the lines of a block: every match of the selector (its capture group, if it
+    has one), or with no selector, every quoted literal."""
+    names: list[str] = []
+    for line in block:
+        if selector is None:
+            names += ["".join(quoted) for quoted in _QUOTED.findall(line)]
+        else:
+            names += [
+                match.group(1) if match.re.groups else match.group()
+                for match in re.finditer(selector, line)
+            ]
+    if names:
+        return Members(tuple(dict.fromkeys(names)))
+    if selector is None:
+        return Unreadable("its lines hold no quoted values")
+    return Unreadable(f"the selector @/{selector}/ matches nothing in its lines")
+
+
+def read_file_members(content: str, pointer: str | None) -> Members | Unreadable:
+    """The names in a file a group refers to: at the JSON Pointer, a list's items or an object's
+    keys, or if there's no pointer, the file's lines."""
+    if pointer is None:
+        return Members(tuple(dict.fromkeys(text_of(content.splitlines()).lines)))
+    try:
+        node = json.loads(content)
+    except json.JSONDecodeError:
+        return Unreadable("it isn't JSON, so a #<pointer> can't reach into it")
+    at = _resolve(node, pointer)
+    if at is None:
+        return Unreadable(f"it has nothing at #{pointer}")
+    if isinstance(at.node, dict):
+        return Members(tuple(str(key) for key in at.node))
+    if isinstance(at.node, list) and all(_is_scalar(item) for item in at.node):
+        return Members(tuple(dict.fromkeys(str(item) for item in at.node)))
+    return Unreadable(f"#{pointer} isn't a list of strings or numbers, or an object")
+
+
+def text_of(lines: Iterable[str]) -> Text:
+    return Text(tuple(line.strip() for line in lines if line.strip()))
+
+
+def read_file_text(content: str, pointer: str | None) -> Text | Unreadable:
+    """The text of a file a group refers to: all of it, or the JSON at the pointer, written
+    canonically, so that how it's laid out isn't part of it."""
+    if pointer is None:
+        return text_of(content.splitlines())
+    reached = json_at(content, pointer)
+    if reached is None:
+        return Unreadable(f"it isn't JSON with something at #{pointer}")
+    return Text((reached,))
 
 
 def unit_of(text: str) -> str | None:
@@ -155,6 +227,10 @@ class _At:
     """What a JSON Pointer reaches."""
 
     node: object
+
+
+def _is_scalar(node: object) -> bool:
+    return isinstance(node, str | int | float) and not isinstance(node, bool)
 
 
 def _resolve(node: object, pointer: str) -> _At | None:
@@ -278,3 +354,55 @@ def _number(text: str) -> Decimal | None:
 def _version(text: str) -> tuple[int, ...] | None:
     match = _VERSION.fullmatch(text.strip())
     return None if match is None else tuple(int(part) for part in match.group(1).split("."))
+
+
+# At most this many names are listed for a set's difference, and a line of text is cut to this
+# length.
+_MAX_NAMES = 5
+_MAX_LINE = 60
+
+
+def compare_members(op: SetOp, left: Members, right: Members) -> Holds | Fails:
+    """Whether `left <op> right` holds, and if not, the names only one of them holds: the left
+    is here, and the right there."""
+    here = [name for name in left.names if name not in right.names]
+    there = [name for name in right.names if name not in left.names]
+    match op:
+        case SetOp.SAME_SET:
+            only = [(here, "here"), (there, "there")]
+        case SetOp.SUBSET_OF:
+            only = [(here, "here")]
+        case SetOp.SUPERSET_OF:
+            only = [(there, "there")]
+        case _:
+            assert_never(op)
+    shown = [
+        f"{_listed(names)} {'is' if len(names) == 1 else 'are'} only {where}"
+        for names, where in only
+        if names
+    ]
+    return Fails("; ".join(shown)) if shown else Holds()
+
+
+def _listed(names: list[str]) -> str:
+    listed = ", ".join(f"`{name}`" for name in names[:_MAX_NAMES])
+    more = len(names) - _MAX_NAMES
+    return listed + (f" and {more} more" if more > 0 else "")
+
+
+def compare_text(left: Text, right: Text) -> Holds | Fails:
+    """Whether left and right are the same text, and if not, the first line that differs: the
+    left is here, and the right there."""
+    for mine, other in zip(left.lines, right.lines, strict=False):
+        if mine != other:
+            return Fails(f"`{_short(mine)}` here is `{_short(other)}` there")
+    shared = min(len(left.lines), len(right.lines))
+    if len(left.lines) > shared:
+        return Fails(f"`{_short(left.lines[shared])}` is only here")
+    if len(right.lines) > shared:
+        return Fails(f"`{_short(right.lines[shared])}` is only there")
+    return Holds()
+
+
+def _short(line: str) -> str:
+    return line if len(line) <= _MAX_LINE else line[: _MAX_LINE - 3] + "..."

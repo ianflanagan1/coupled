@@ -1,0 +1,14 @@
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # COUPLED:node-setup: release
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"  # COUPLED:node-version: release
+      # COUPLED:node-setup:END
+      - run: npm publish

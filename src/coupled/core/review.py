@@ -2,10 +2,12 @@
 change the lint can't check by value fails until someone has reviewed the group and recorded it
 again with --update.
 
-It records each group's table by a fingerprint, and each of its sites by its marker, with the
-unit on its value in a group of value ops, or a fingerprint of its block in a group of
-structural ops, beside a fingerprint of each file in this repository the group names. So a table
-changed, a site added or removed, a unit changed or a structural block edited all fail.
+It records each group's table by a fingerprint, and each of its sites by its marker. What the
+lint compares on every run it doesn't record: the values, sets and text that value, set and text
+ops relate. It records what it can't compare: the unit on each value, which a comparison
+ignores, and in a group of judged ops, a fingerprint of each site's block and of each file in
+this repository the group names. So a table changed, a site added or removed, a unit changed or
+a judged block edited all fail.
 """
 
 import hashlib
@@ -18,11 +20,12 @@ from coupled.core.check import (
     Missing,
     Problem,
     Site,
-    is_value_group,
+    group_kind,
     labelled,
 )
 from coupled.core.markers import marker_text
-from coupled.core.registry import Registry, Reviewed, ReviewedSite, table_name
+from coupled.core.registry import Group, Registry, Reviewed, ReviewedSite, table_name
+from coupled.core.relations import Kind
 from coupled.core.values import Value, json_at, read_value, unit_of
 
 
@@ -56,40 +59,51 @@ def current(
     groups refer to."""
     groups: dict[str, CurrentGroup] = {}
     for key, group in registry.groups.items():
-        value_group = is_value_group(group)
+        kind = group_kind(group)
         records: list[CurrentSite] = []
         for site, label in labelled(sites, key):
             unit = None
             block = None
             value = None
-            if not value_group:
-                block = fingerprint(site.block)
-            elif site.code is not None:
-                reading = read_value(site.code, group.selector(label))
-                if isinstance(reading, Value):
-                    value = reading.text
-                    unit = unit_of(reading.text)
+            match kind:
+                case Kind.VALUE:
+                    if site.code is not None:
+                        reading = read_value(site.code, group.selector(label))
+                        if isinstance(reading, Value):
+                            value = reading.text
+                            unit = unit_of(reading.text)
+                case Kind.SET | Kind.TEXT:
+                    pass
+                case Kind.JUDGED | None:
+                    block = fingerprint(site.block)
+                case _:
+                    assert_never(kind)
             name = marker_text(key, label)
             records.append(CurrentSite(site.where, ReviewedSite(name, unit, block), value))
-        if not value_group:
-            for ref in group.file_refs():
-                if ref.repo is not None:
-                    continue
-                file = files.get(ref.path)
-                match file:
-                    case Content(text):
-                        reached = text if ref.pointer is None else json_at(text, ref.pointer)
-                        block = fingerprint((reached or text).splitlines())
-                        name = ref.unmarked().text()
-                        records.append(
-                            CurrentSite(ref.text(), ReviewedSite(name, None, block), None)
-                        )
-                    case Missing() | None:
-                        pass  # Reported by check, unless it's optional.
-                    case _:
-                        assert_never(file)
+        if kind is Kind.JUDGED or kind is None:
+            records += _judged_files(group, files)
         groups[key] = CurrentGroup(group.definition, tuple(records))
     return groups
+
+
+def _judged_files(group: Group, files: dict[str, FileRead]) -> list[CurrentSite]:
+    """Each file in this repository that a group of judged ops names, as it is now."""
+    records: list[CurrentSite] = []
+    for ref in group.file_refs():
+        if ref.repo is not None:
+            continue
+        file = files.get(ref.path)
+        match file:
+            case Content(text):
+                reached = text if ref.pointer is None else json_at(text, ref.pointer)
+                block = fingerprint((reached or text).splitlines())
+                name = ref.unmarked().text()
+                records.append(CurrentSite(ref.text(), ReviewedSite(name, None, block), None))
+            case Missing() | None:
+                pass  # Reported by check, unless it's optional.
+            case _:
+                assert_never(file)
+    return records
 
 
 def fingerprint(lines: list[str] | tuple[str, ...]) -> str:

@@ -3,7 +3,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # COUPLED:node-setup: ci
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"  # COUPLED:node-version: ci. The major version alone matches on the parts both give.
+      # COUPLED:node-setup:END
+      - run: npm test

@@ -5,6 +5,7 @@ from typing import Literal
 
 
 # COUPLED:upload-shape: model
+# COUPLED:upload-columns: model
 @dataclass(frozen=True)
 class Upload:
     id: str
@@ -15,4 +16,5 @@ class Upload:
     # COUPLED:upload-status:END
 
 
+# COUPLED:upload-columns:END
 # COUPLED:upload-shape:END

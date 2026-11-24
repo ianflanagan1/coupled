@@ -145,10 +145,12 @@ def test_a_group_with_one_member_is_reported() -> None:
     assert "needs at least two sites or files, and has 1" in problem.message
 
 
-def test_a_group_mixing_value_and_structural_ops_is_reported() -> None:
+def test_a_group_mixing_kinds_of_op_is_reported() -> None:
     groups = '["COUPLED:upload-limit:"]\nrelations = ["proxy >= app", "app same-as proxy"]\n'
     found = problems(UPLOAD_FILES, groups, {}, OFF)
-    assert any("either value ops or structural ops" in m for m in messages_of(found))
+    assert any(
+        "Use ops of one kind in a group, not >= and same-as" in m for m in messages_of(found)
+    )
 
 
 def test_relating_two_sites_twice_is_reported() -> None:
@@ -181,12 +183,170 @@ def test_an_end_after_a_marker_of_a_value_group_is_reported() -> None:
     assert any("Drop the END" in m for m in messages_of(found))
 
 
-def test_a_structural_group_s_relations_are_not_compared() -> None:
+STATUS = """
+["COUPLED:status:"]
+relations = ["web subset-of app"]
+"""
+
+STATUS_FILES = {
+    "app.py": (
+        "# COUPLED:status: app\nclass Status(StrEnum):\n"
+        '    PENDING = "pending"\n    STORED = "stored"\n# COUPLED:status:END'
+    ),
+    "web.ts": '// COUPLED:status: web\nexport type Status = "pending" | "stored";',
+}
+
+
+def test_a_set_relation_that_holds_has_no_problems() -> None:
+    assert problems(STATUS_FILES, STATUS, {}, OFF) == []
+
+
+def test_a_set_relation_that_does_not_hold_names_what_only_one_site_holds() -> None:
+    web = '// COUPLED:status: web\nexport type Status = "pending" | "archived";'
+    found = problems({**STATUS_FILES, "web.ts": web}, STATUS, {}, OFF)
+    assert messages_of(found) == [
+        "web.ts:1 `web subset-of app` doesn't hold with app.py:1: `archived` is only here. "
+        "Change the members so it holds; change the relation only if what must hold has changed"
+    ]
+
+
+def test_a_bare_same_set_compares_every_site_and_file() -> None:
+    groups = '["COUPLED:status:"]\nrelations = ["same-set"]\nfiles = ["./statuses.json#/all"]\n'
+    same: dict[str, FileRead] = {"statuses.json": Content('{"all": ["stored", "pending"]}')}
+    assert problems(STATUS_FILES, groups, same, OFF) == []
+    fewer: dict[str, FileRead] = {"statuses.json": Content('{"all": ["pending"]}')}
+    found = problems(STATUS_FILES, groups, fewer, OFF)
+    assert messages_of(found)[0].startswith(
+        "./statuses.json#/all `same-set` doesn't hold with app.py:1: `stored` is only there."
+    )
+
+
+def test_a_selector_picks_each_of_a_site_s_members() -> None:
     files = {
-        "a.py": "# COUPLED:vat: invoice\ndef vat(n):\n    return n / 5\n# COUPLED:vat:END",
-        "b.py": "# COUPLED:vat: cart\ndef vat(n):\n    return n // 5\n# COUPLED:vat:END",
+        "model.py": (
+            "# COUPLED:columns: model\nclass Upload:\n    id: str\n    size_bytes: int\n"
+            "# COUPLED:columns:END"
+        ),
+        "table.sql": (
+            "-- COUPLED:columns: table\nCREATE TABLE uploads (\n    id TEXT,\n"
+            "    size_bytes INTEGER\n);\n-- COUPLED:columns:END"
+        ),
     }
-    assert problems(files, '["COUPLED:vat:"]\nrelations = ["same-as"]\n', {}, OFF) == []
+    groups = (
+        '["COUPLED:columns:"]\nrelations = ["model same-set table"]\n'
+        "select = { model = '^(\\w+): ', table = '^([a-z_]+) ' }\n"
+    )
+    assert problems(files, groups, {}, OFF) == []
+    files["table.sql"] = files["table.sql"].replace("size_bytes", "bytes")
+    assert (
+        "`size_bytes` is only here; `bytes` is only there"
+        in messages_of(problems(files, groups, {}, OFF))[0]
+    )
+
+
+def test_a_site_whose_members_cannot_be_read_asks_for_a_selector() -> None:
+    web = "// COUPLED:status: web\nexport type Status = Pending | Stored;"
+    found = problems({**STATUS_FILES, "web.ts": web}, STATUS, {}, OFF)
+    assert [p.where for p in found] == ["web.ts:1"]
+    assert "select = { web = '<regex>' }" in found[0].message
+
+
+STEPS = """
+["COUPLED:setup:"]
+relations = ["same-text"]
+"""
+
+STEPS_FILES = {
+    "ci.yml": (
+        "# COUPLED:setup: ci\n- uses: actions/checkout@v4\n- run: npm ci\n# COUPLED:setup:END"
+    ),
+    "release.yml": (
+        "      # COUPLED:setup: release\n      - uses: actions/checkout@v4\n\n"
+        "      - run: npm ci\n      # COUPLED:setup:END"
+    ),
+}
+
+
+def test_blocks_with_the_same_text_however_they_are_indented_have_no_problems() -> None:
+    assert problems(STEPS_FILES, STEPS, {}, OFF) == []
+
+
+def test_text_that_differs_is_reported_with_the_first_line_that_does() -> None:
+    release = STEPS_FILES["release.yml"].replace("npm ci", "npm install")
+    found = problems({**STEPS_FILES, "release.yml": release}, STEPS, {}, OFF)
+    assert messages_of(found) == [
+        "release.yml:1 `same-text` doesn't hold with ci.yml:1: `- run: npm install` here is "
+        "`- run: npm ci` there. Change the text so it holds; change the relation only if what "
+        "must hold has changed"
+    ]
+
+
+def test_a_site_s_text_is_compared_with_a_file_s() -> None:
+    groups = '["COUPLED:setup:"]\nrelations = ["ci same-text ./steps.txt"]\n'
+    files = {"ci.yml": STEPS_FILES["ci.yml"]}
+    steps: dict[str, FileRead] = {
+        "steps.txt": Content("- uses: actions/checkout@v4\n- run: npm ci\n")
+    }
+    assert problems(files, groups, steps, OFF) == []
+    steps = {"steps.txt": Content("- uses: actions/checkout@v4\n")}
+    found = problems(files, groups, steps, OFF)
+    assert "doesn't hold with ./steps.txt: `- run: npm ci` is only here" in messages_of(found)[0]
+
+
+def test_the_markers_of_sites_inside_a_block_are_not_part_of_its_text() -> None:
+    files = {
+        "ci.yml": (
+            "# COUPLED:setup: ci\n- uses: actions/setup-node@v4\n"
+            '  node-version: "24"  # COUPLED:node: ci\n# COUPLED:setup:END'
+        ),
+        "release.yml": (
+            "# COUPLED:setup: release\n- uses: actions/setup-node@v4\n"
+            '  node-version: "24"  # COUPLED:node: release. Pinned.\n# COUPLED:setup:END'
+        ),
+    }
+    groups = STEPS + '["COUPLED:node:"]\nrelations = ["="]\n'
+    assert problems(files, groups, {}, OFF) == []
+
+
+VAT_FILES = {
+    "a.py": "# COUPLED:vat: invoice\ndef vat(n):\n    return n / 5\n# COUPLED:vat:END",
+    "b.py": "# COUPLED:vat: cart\ndef vat(n):\n    return n // 5\n# COUPLED:vat:END",
+}
+VAT_WHY = 'why = "an invoice and a cart must charge the same VAT"\n'
+
+
+def test_a_judged_group_s_relations_are_not_compared() -> None:
+    groups = '["COUPLED:vat:"]\nrelations = ["same-as"]\n' + VAT_WHY
+    assert problems(VAT_FILES, groups, {}, OFF) == []
+
+
+def test_a_judged_group_that_does_not_say_why_is_reported() -> None:
+    [problem] = problems(VAT_FILES, '["COUPLED:vat:"]\nrelations = ["same-as"]\n', {}, OFF)
+    assert problem.where == 'coupled-registry.toml ["COUPLED:vat:"]'
+    assert problem.message.startswith("Say why these sites are coupled, as `why = ")
+
+
+def test_prose_can_be_the_description_of_code_in_a_judged_group() -> None:
+    files = {
+        **VAT_FILES,
+        "README.md": "<!-- COUPLED:vat: docs -->\nVAT is a fifth of the net price.",
+    }
+    groups = (
+        '["COUPLED:vat:"]\nrelations = ["invoice same-as cart", "docs description-of invoice"]\n'
+        + VAT_WHY
+    )
+    assert problems(files, groups, {}, OFF) == []
+
+
+def test_a_formula_with_an_op_that_does_not_compare_values_is_reported() -> None:
+    groups = '["COUPLED:status:"]\nrelations = ["web subset-of app + 1"]\n'
+    found = problems(STATUS_FILES, groups, {}, OFF)
+    assert any("Use a formula only with = != < <= > >=" in m for m in messages_of(found))
+
+
+def test_a_selector_in_a_text_or_judged_group_is_reported() -> None:
+    found = problems(STEPS_FILES, STEPS + "select = { ci = 'npm' }\n", {}, OFF)
+    assert any("Use `select` only with" in m for m in messages_of(found))
 
 
 def test_a_marker_with_a_blank_line_before_its_code_is_reported() -> None:

@@ -45,9 +45,18 @@ def test_a_bare_op_is_seen_as_the_same_as_every_other_site() -> None:
     assert relations_of(group, "ci") == "= every other site and file"
 
 
-def test_structural_ops_flip_from_the_other_side() -> None:
+def test_an_op_with_a_direction_flips_from_the_other_side() -> None:
     group = registry('["COUPLED:f:"]\nrelations = ["ini subset-of phpstan"]\n').groups["f"]
     assert relations_of(group, "phpstan") == "superset-of ini"
+    group = registry('["COUPLED:f:"]\nrelations = ["readme description-of cli"]\n').groups["f"]
+    assert relations_of(group, "readme") == "description-of cli"
+    assert relations_of(group, "cli") == "described-by readme"
+
+
+def test_an_op_without_a_direction_is_the_same_from_the_other_side() -> None:
+    for op in ("same-set", "same-text", "same-as", "same-shape"):
+        group = registry(f'["COUPLED:f:"]\nrelations = ["a {op} b"]\n').groups["f"]
+        assert relations_of(group, "b") == f"{op} a"
 
 
 def test_each_setting_wants_its_own_part_of_the_message() -> None:
@@ -100,6 +109,12 @@ def test_a_relations_only_message_is_rewritten_and_dropped() -> None:
         f"MAX = 8  # COUPLED:upload-limit: app. {POINTER} Larger is refused."
     ]
     assert with_messages(lines, {}) == ["MAX = 8  # COUPLED:upload-limit: app. Larger is refused."]
+
+
+def test_a_message_starting_with_any_op_is_dropped() -> None:
+    for op in ("same-set", "same-text", "described-by"):
+        lines = [f"X = 1  # COUPLED:upload-limit: app. Must be {op} proxy."]
+        assert with_messages(lines, {}) == ["X = 1  # COUPLED:upload-limit: app"]
 
 
 def test_prose_starting_must_be_is_not_taken_for_a_message() -> None:

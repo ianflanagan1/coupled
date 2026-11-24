@@ -19,15 +19,18 @@ The registry, {REGISTRY_FILE} at <dir> by default, holds a table for each group,
 ["COUPLED:<key>:"], whose relations relate its sites, by their labels, and the
 files that can't hold a marker. Reports malformed markers, a marker whose key
 has no table, labels that no marker or more than one has, files that aren't
-there, sites and files nothing relates, and in groups using = != < <= > >=,
-values that can't be read and relations that don't hold. Files in other
-repositories aren't checked, and the status line lists their repositories.
+there, and sites and files nothing relates. In groups whose ops compare values
+(= != < <= > >=), sets of names (same-set subset-of superset-of) or text
+(same-text), it reports sites that can't be read and relations that don't hold.
+Files in other repositories aren't checked, and the status line lists their
+repositories.
 
 It also compares the groups with the registry's reviewed section, which records
-each group's table, the unit on each value, and a fingerprint of each block a
-structural op relates. A table changed, a site added or removed, a unit changed
-or a block edited is reported until the group is reviewed and recorded with
---update <key>, which names each group it records.
+each group's table, the unit on each value, and a fingerprint of each block that
+an op it can't compare relates (same-as same-shape description-of described-by).
+A table changed, a site added or removed, a unit changed or such a block edited
+is reported until the group is reviewed and recorded with --update <key>, which
+names each group it records.
 
 <dir>/.config/coupled.toml, if it's there, sets beside version = 1 the
 path prefixes to exclude on every run, as exclude = ["docs", "tests"], the

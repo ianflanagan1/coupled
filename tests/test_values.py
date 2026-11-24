@@ -3,19 +3,27 @@ from decimal import Decimal
 
 from coupled.core.comments import syntax_of
 from coupled.core.markers import find_markers
-from coupled.core.relations import Arith, Formula, ValueOp
+from coupled.core.relations import Arith, Formula, SetOp, ValueOp
 from coupled.core.values import (
     Fails,
     Holds,
     Incomparable,
+    Members,
+    Text,
     Unreadable,
     Value,
     block_lines,
     compare,
+    compare_members,
+    compare_text,
     described_line,
     json_at,
+    read_file_members,
+    read_file_text,
     read_file_value,
+    read_members,
     read_value,
+    text_of,
     unit_of,
     value_line,
 )
@@ -191,6 +199,144 @@ class Comparing(unittest.TestCase):
         self.assertIsInstance(
             compare(ValueOp.EQ, "1", "60", Formula(Arith.DIV, Decimal(0))), Incomparable
         )
+
+
+class ReadingMembers(unittest.TestCase):
+    def test_a_block_s_members_are_the_quoted_values_on_its_lines(self) -> None:
+        block = ("class Status(StrEnum):", 'PENDING = "pending"', "STORED = 'stored'")
+        self.assertEqual(Members(("pending", "stored")), read_members(block, None))
+
+    def test_several_members_can_share_a_line(self) -> None:
+        block = ('export type Status = "pending" | "stored";',)
+        self.assertEqual(Members(("pending", "stored")), read_members(block, None))
+
+    def test_a_member_found_twice_is_one_member(self) -> None:
+        self.assertEqual(Members(("a", "b")), read_members(("'a', 'b'", "'a'"), None))
+
+    def test_a_selector_picks_each_member_by_its_capture_group(self) -> None:
+        block = ("CREATE TABLE uploads (", "id TEXT PRIMARY KEY,", "size_bytes INTEGER", ");")
+        self.assertEqual(Members(("id", "size_bytes")), read_members(block, r"^([a-z_]+) "))
+
+    def test_a_selector_without_a_group_picks_each_whole_match(self) -> None:
+        block = ("disable_functions = exec,popen",)
+        self.assertEqual(Members(("exec", "popen")), read_members(block, r"(?<=[ ,])\w+"))
+
+    def test_a_block_with_no_quoted_value_is_unreadable(self) -> None:
+        self.assertIsInstance(read_members(("id: str", "name: str"), None), Unreadable)
+
+    def test_a_selector_that_matches_nothing_is_unreadable(self) -> None:
+        self.assertIsInstance(read_members(("id: str",), r"^(\w+) ="), Unreadable)
+
+
+class FileMembers(unittest.TestCase):
+    def test_a_file_s_members_are_its_lines(self) -> None:
+        self.assertEqual(Members(("en", "fr")), read_file_members("en\n\n  fr\n", None))
+
+    def test_a_pointer_to_a_list_reads_its_items(self) -> None:
+        content = '{"locales": ["en", "fr"], "ports": [80, 443]}'
+        self.assertEqual(Members(("en", "fr")), read_file_members(content, "/locales"))
+        self.assertEqual(Members(("80", "443")), read_file_members(content, "/ports"))
+
+    def test_a_pointer_to_an_object_reads_its_keys(self) -> None:
+        content = '{"scripts": {"build": "tsc", "test": "vitest"}}'
+        self.assertEqual(Members(("build", "test")), read_file_members(content, "/scripts"))
+
+    def test_a_pointer_to_one_value_to_nothing_or_into_a_list_of_objects_is_unreadable(
+        self,
+    ) -> None:
+        for content, pointer in (
+            ('{"a": 1}', "/a"),
+            ('{"a": 1}', "/b"),
+            ('{"a": [{"b": 1}]}', "/a"),
+            ("a: [1]", "/a"),
+        ):
+            self.assertIsInstance(read_file_members(content, pointer), Unreadable, content)
+
+    def test_an_empty_file_or_list_has_no_members(self) -> None:
+        self.assertEqual(Members(()), read_file_members("\n", None))
+        self.assertEqual(Members(()), read_file_members('{"a": []}', "/a"))
+
+
+class ComparingMembers(unittest.TestCase):
+    def test_the_same_members_in_any_order_are_the_same_set(self) -> None:
+        self.assertEqual(
+            Holds(), compare_members(SetOp.SAME_SET, Members(("a", "b")), Members(("b", "a")))
+        )
+
+    def test_a_set_that_differs_names_what_only_each_side_has(self) -> None:
+        self.assertEqual(
+            Fails("`a` is only here; `c`, `d` are only there"),
+            compare_members(SetOp.SAME_SET, Members(("a", "b")), Members(("b", "c", "d"))),
+        )
+
+    def test_a_subset_holds_only_names_the_other_holds(self) -> None:
+        self.assertEqual(
+            Holds(), compare_members(SetOp.SUBSET_OF, Members(("a",)), Members(("a", "b")))
+        )
+        self.assertEqual(
+            Fails("`c` is only here"),
+            compare_members(SetOp.SUBSET_OF, Members(("a", "c")), Members(("a", "b"))),
+        )
+
+    def test_a_superset_holds_every_name_the_other_holds(self) -> None:
+        self.assertEqual(
+            Holds(), compare_members(SetOp.SUPERSET_OF, Members(("a", "b")), Members(("a",)))
+        )
+        self.assertEqual(
+            Fails("`b` is only there"),
+            compare_members(SetOp.SUPERSET_OF, Members(("a",)), Members(("a", "b"))),
+        )
+
+    def test_a_long_difference_is_cut_short(self) -> None:
+        names = tuple(str(n) for n in range(8))
+        self.assertEqual(
+            Fails("`1`, `2`, `3`, `4`, `5` and 2 more are only here"),
+            compare_members(SetOp.SUBSET_OF, Members(names), Members(("0",))),
+        )
+
+
+class Texts(unittest.TestCase):
+    def test_text_is_its_lines_without_indentation_or_blank_lines(self) -> None:
+        self.assertEqual(Text(("a:", "- b")), text_of(["a:", "", "    - b  "]))
+
+    def test_a_file_s_text_is_all_of_it(self) -> None:
+        self.assertEqual(
+            Text(("node_modules", "dist")), read_file_text("node_modules\n\ndist\n", None)
+        )
+
+    def test_a_pointer_reads_the_json_there_however_it_is_laid_out(self) -> None:
+        self.assertEqual(
+            read_file_text('{"x": {"b": 2, "a": 1}}', "/x"),
+            read_file_text('{"y": 0, "x": {\n  "a": 1,\n  "b": 2\n}}', "/x"),
+        )
+
+    def test_a_pointer_to_nothing_is_unreadable(self) -> None:
+        self.assertIsInstance(read_file_text('{"x": 1}', "/y"), Unreadable)
+        self.assertIsInstance(read_file_text("x: 1", "/x"), Unreadable)
+
+    def test_the_same_lines_are_the_same_text(self) -> None:
+        self.assertEqual(Holds(), compare_text(Text(("a", "b")), Text(("a", "b"))))
+
+    def test_text_that_differs_shows_the_first_line_that_does(self) -> None:
+        self.assertEqual(
+            Fails("`return n / 5` here is `return n // 5` there"),
+            compare_text(
+                Text(("def vat(n):", "return n / 5", "x")),
+                Text(("def vat(n):", "return n // 5", "y")),
+            ),
+        )
+
+    def test_text_that_goes_on_past_the_other_shows_its_next_line(self) -> None:
+        self.assertEqual(
+            Fails("`c` is only here"), compare_text(Text(("a", "b", "c")), Text(("a", "b")))
+        )
+        self.assertEqual(
+            Fails("`b` is only there"), compare_text(Text(("a",)), Text(("a", "b", "c")))
+        )
+
+    def test_a_long_line_is_cut_short(self) -> None:
+        verdict = compare_text(Text(("x" * 100,)), Text(("y",)))
+        self.assertEqual(Fails("`" + "x" * 57 + "...` here is `y` there"), verdict)
 
 
 class Blocks(unittest.TestCase):

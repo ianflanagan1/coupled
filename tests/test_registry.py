@@ -16,9 +16,13 @@ from coupled.core.relations import (
     Equation,
     FileRef,
     Formula,
+    JudgedOp,
+    Kind,
     Label,
-    StructuralOp,
+    SetOp,
+    TextOp,
     ValueOp,
+    kind_of,
     parse_relation,
 )
 
@@ -56,7 +60,7 @@ def test_a_relation_can_name_a_file_with_a_pointer_in_this_or_another_repository
     relation = parse_relation("writer same-shape //github.com/o/n/schema.json")
     assert relation == Equation(
         Label("writer"),
-        StructuralOp.SAME_SHAPE,
+        JudgedOp.SAME_SHAPE,
         FileRef("github.com/o/n", "schema.json", False, None),
         None,
     )
@@ -64,11 +68,37 @@ def test_a_relation_can_name_a_file_with_a_pointer_in_this_or_another_repository
 
 def test_a_bare_op_alone_says_every_site_is_the_same() -> None:
     assert parse_relation("=") == Bare(ValueOp.EQ)
-    assert parse_relation("same-as") == Bare(StructuralOp.SAME_AS)
+    assert parse_relation("same-set") == Bare(SetOp.SAME_SET)
+    assert parse_relation("same-text") == Bare(TextOp.SAME_TEXT)
+    assert parse_relation("same-as") == Bare(JudgedOp.SAME_AS)
+    assert parse_relation("same-shape") == Bare(JudgedOp.SAME_SHAPE)
 
 
-def test_an_op_that_cannot_stand_alone_says_how_to_write_it() -> None:
-    assert isinstance(parse_relation("<"), str)
+def test_an_op_that_cannot_stand_alone_says_which_can() -> None:
+    for op in ("<", "subset-of", "description-of", "described-by"):
+        problem = parse_relation(op)
+        assert isinstance(problem, str)
+        assert "only = same-set same-text same-as same-shape can stand alone" in problem
+
+
+def test_a_relation_can_relate_sets_text_and_prose_about_code() -> None:
+    for text, op in (
+        ("web subset-of app", SetOp.SUBSET_OF),
+        ("app superset-of web", SetOp.SUPERSET_OF),
+        ("model same-set table", SetOp.SAME_SET),
+        ("ci same-text release", TextOp.SAME_TEXT),
+        ("readme description-of cli", JudgedOp.DESCRIPTION_OF),
+        ("cli described-by readme", JudgedOp.DESCRIBED_BY),
+    ):
+        left, _, right = text.split()
+        assert parse_relation(text) == Equation(Label(left), op, Label(right), None)
+
+
+def test_each_op_is_of_one_kind() -> None:
+    assert {kind_of(op) for op in ValueOp} == {Kind.VALUE}
+    assert {kind_of(op) for op in SetOp} == {Kind.SET}
+    assert {kind_of(op) for op in TextOp} == {Kind.TEXT}
+    assert {kind_of(op) for op in JudgedOp} == {Kind.JUDGED}
 
 
 def test_a_relation_with_an_unknown_op_or_a_bad_ref_says_how_to_write_it() -> None:

@@ -1,10 +1,14 @@
 """The relations a group's table in the registry states between its sites and files.
 
 A relation is `<ref> <op> <ref> [<arith> <number>]`, an equation: the first ref's value, by op,
-the second's through the formula. Or it's a bare op, `=`, `same-as` or `same-shape`, alone:
-every site and file of the group is the same. A ref is a site, by its marker's label
-(`proxy`), or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository, or
-`//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another.
+the second's through the formula. Or it's a bare op, `=`, `same-set`, `same-text`, `same-as` or
+`same-shape`, alone: every site and file of the group is the same. A ref is a site, by its
+marker's label (`proxy`), or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this
+repository, or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another.
+
+An op is of one of four kinds, by what it reads each site as, and a group uses one kind. Value
+ops compare single values, set ops the names each site holds, and the text op the sites' text,
+so the lint checks all three. Judged ops relate code or prose that only a reader can compare.
 """
 
 import re
@@ -17,7 +21,7 @@ from coupled.core.markers import NAME_PATTERN
 
 
 class ValueOp(StrEnum):
-    """An op that compares the values at two sites."""
+    """An op that compares the single values at two sites."""
 
     EQ = "="
     NE = "!="
@@ -27,21 +31,69 @@ class ValueOp(StrEnum):
     GE = ">="
 
 
-class StructuralOp(StrEnum):
-    """An op relating code or structure, which an agent judges and the lint doesn't compare."""
+class SetOp(StrEnum):
+    """An op that compares the names two sites hold, such as an enum's members."""
 
-    SAME_AS = "same-as"
-    SAME_SHAPE = "same-shape"
+    SAME_SET = "same-set"
     SUBSET_OF = "subset-of"
     SUPERSET_OF = "superset-of"
 
 
-type Op = ValueOp | StructuralOp
+class TextOp(StrEnum):
+    """An op that compares the text of two sites, such as a block copied between two files."""
+
+    SAME_TEXT = "same-text"
+
+
+class JudgedOp(StrEnum):
+    """An op relating code or prose that only a reader can compare: the lint records each site
+    and reports a change to one, but can't tell whether the relation holds."""
+
+    SAME_AS = "same-as"
+    SAME_SHAPE = "same-shape"
+    DESCRIPTION_OF = "description-of"
+    DESCRIBED_BY = "described-by"
+
+
+type Op = ValueOp | SetOp | TextOp | JudgedOp
+
+
+class Kind(StrEnum):
+    """What an op reads each site as: one value, a set of names, text, or something only a
+    reader can compare."""
+
+    VALUE = "value"
+    SET = "set"
+    TEXT = "text"
+    JUDGED = "judged"
+
+
+def kind_of(op: Op) -> Kind:
+    match op:
+        case ValueOp():
+            return Kind.VALUE
+        case SetOp():
+            return Kind.SET
+        case TextOp():
+            return Kind.TEXT
+        case JudgedOp():
+            return Kind.JUDGED
+        case _:
+            assert_never(op)
+
+
+OPS: tuple[Op, ...] = (*ValueOp, *SetOp, *TextOp, *JudgedOp)
 
 # The ops a relation can be alone, when every site and file of the group is the same.
-BARE_OPS: frozenset[Op] = frozenset({ValueOp.EQ, StructuralOp.SAME_AS, StructuralOp.SAME_SHAPE})
+BARE_OPS: tuple[Op, ...] = (
+    ValueOp.EQ,
+    SetOp.SAME_SET,
+    TextOp.SAME_TEXT,
+    JudgedOp.SAME_AS,
+    JudgedOp.SAME_SHAPE,
+)
 
-OPS_TEXT = " ".join([*ValueOp, *StructuralOp])
+OPS_TEXT = " ".join(OPS)
 
 
 class Arith(StrEnum):
@@ -154,7 +206,7 @@ def parse_relation(text: str) -> Relation | str:
         op = _op(words[0])
         if op is None or op not in BARE_OPS:
             return (
-                f"Write `{text}` as `<ref> <op> <ref>`; only = same-as same-shape can stand "
+                f"Write `{text}` as `<ref> <op> <ref>`; only {' '.join(BARE_OPS)} can stand "
                 "alone, for a group whose sites and files are all the same"
             )
         return Bare(op)
@@ -203,11 +255,7 @@ def parse_file(text: str) -> FileRef | None:
 
 
 def _op(text: str) -> Op | None:
-    for family in (ValueOp, StructuralOp):
-        for op in family:
-            if op == text:
-                return op
-    return None
+    return next((op for op in OPS if op == text), None)
 
 
 def refs(relation: Relation) -> list[Ref]:

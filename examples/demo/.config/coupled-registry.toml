@@ -17,7 +17,11 @@ why = "compose publishes the port the app listens on"
 ["COUPLED:node-version:"]
 relations = ["="]
 files = ["./.nvmrc", "./.node-version?"]
-why = "CI tests on the Node version the image and developers run"
+why = "CI tests, and a release is built, on the Node version the image and developers run"
+
+["COUPLED:node-setup:"]
+relations = ["same-text"]
+why = "a release is built with the steps CI tested, which two workflows can't share"
 
 ["COUPLED:python-version:"]
 relations = ["./.python-version = ./web/package.json#/engines/python-backend"]
@@ -34,8 +38,8 @@ select = { owners = '^/(\S+)' }
 why = "CODEOWNERS must name the registry where the settings put it, or a change to it skips review"
 
 ["COUPLED:safe-name:"]
-relations = ["same-as"]
-why = "the browser and the server must make the same safe name from a filename"
+relations = ["web same-as app", "docs description-of app"]
+why = "the browser and the server must make the same safe name from a filename, as the docs say it's made"
 
 ["COUPLED:upload-shape:"]
 relations = [
@@ -44,6 +48,11 @@ relations = [
     "type same-shape //github.com/example/upload-api/schema/upload.json",
 ]
 why = "the table stores, the model reads and the web receives one upload record, which the upload API's schema defines"
+
+["COUPLED:upload-columns:"]
+relations = ["model same-set table"]
+select = { model = '^(\w+): ', table = '^([a-z_]+) ' }
+why = "the model reads each column of the table by its name"
 
 ["COUPLED:upload-status:"]
 relations = ["web subset-of app"]
@@ -56,10 +65,16 @@ definition = "5b394c04a69fd9d0"
 "COUPLED:breakpoint: css" = {}
 "COUPLED:breakpoint: ts" = {}
 
+[reviewed."COUPLED:node-setup:"]
+definition = "6a4b7b26d7c7fc09"
+"COUPLED:node-setup: ci" = {}
+"COUPLED:node-setup: release" = {}
+
 [reviewed."COUPLED:node-version:"]
 definition = "0b62cf14bb9403c1"
 "COUPLED:node-version: ci" = {}
 "COUPLED:node-version: docker" = {}
+"COUPLED:node-version: release" = {}
 
 [reviewed."COUPLED:port:"]
 definition = "07b3ccec236290ec"
@@ -80,9 +95,15 @@ definition = "13986db4799dc2ee"
 "COUPLED:request-timeout: proxy" = { unit = "s" }
 
 [reviewed."COUPLED:safe-name:"]
-definition = "a9ef15eaffcfacf9"
+definition = "fe90665d3904692e"
 "COUPLED:safe-name: app" = { block = "9adaa5da1c4d92f2" }
+"COUPLED:safe-name: docs" = { block = "56c32758168be623" }
 "COUPLED:safe-name: web" = { block = "53e7bdee3837dfb4" }
+
+[reviewed."COUPLED:upload-columns:"]
+definition = "f5f533399488fa75"
+"COUPLED:upload-columns: model" = {}
+"COUPLED:upload-columns: table" = {}
 
 [reviewed."COUPLED:upload-limit:"]
 definition = "a51b7f8ac418f130"
@@ -98,5 +119,5 @@ definition = "50c5a87016d875d9"
 
 [reviewed."COUPLED:upload-status:"]
 definition = "ef1659488f971a4e"
-"COUPLED:upload-status: app" = { block = "62b5bebf9ef30a24" }
-"COUPLED:upload-status: web" = { block = "03f31027443bdf8e" }
+"COUPLED:upload-status: app" = {}
+"COUPLED:upload-status: web" = {}

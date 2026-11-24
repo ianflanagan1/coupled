@@ -1,6 +1,6 @@
 # coupled
 
-Checks the COUPLED groups in a repository: values or code in several places that must change together but can't share a single source of truth. Each place carries a marker, `COUPLED:<key>: <label>`, and the repository's registry, `coupled-registry.toml`, describes each group: how its sites relate, and the files in it that can't hold a marker. The lint checks that markers and registry agree, that the relations between values hold, and that no group has changed since it was last reviewed. It also gives Claude Code two hooks that show Claude a group before it edits one of its sites. The convention, and the Claude Code skill that goes with it, are in [coupled-convention](https://github.com/ianflanagan1/coupled-convention).
+Checks the COUPLED groups in a repository: values or code in several places that must change together but can't share a single source of truth. Each place carries a marker, `COUPLED:<key>: <label>`, and the repository's registry, `coupled-registry.toml`, describes each group: how its sites relate, and the files in it that can't hold a marker. The lint checks that markers and registry agree, that the relations it can compare hold, between values, sets of names and blocks of text, and that no group has changed since it was last reviewed. It also gives Claude Code two hooks that show Claude a group before it edits one of its sites. The convention, and the Claude Code skill that goes with it, are in [coupled-convention](https://github.com/ianflanagan1/coupled-convention).
 
 ```
 $ coupled
@@ -34,12 +34,23 @@ A file whose `COUPLED:` text is all examples, such as the ianf-coupled skill cop
 
 Each group has a table in the registry, named `["COUPLED:<key>:"]`:
 
-- `relations`: each `<ref> <op> <ref> [<arith> <number>]`, the first ref's value by op the second's through the formula; or a bare op, `=`, `same-as` or `same-shape`, alone, when every site and file of the group is the same. A ref is a site, by its label, or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`.
+- `relations`: each `<ref> <op> <ref> [<arith> <number>]`, the first ref's value by op the second's through the formula; or a bare op, `=`, `same-set`, `same-text`, `same-as` or `same-shape`, alone, when every site and file of the group is the same. A ref is a site, by its label, or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`.
 - `files`: files in a group whose relation is a bare op, which no relation names.
-- `select`: a regex for a site, by its label, picking its value out of its line when the lint can't, with the value in its one capture group: `select = { url = ':(\d+)$' }`.
-- `why`: why the sites must change together, which the lint shows when a relation fails and the hooks show beside the group: `why = "nginx rejects a larger body before the app sees it"`. Rewording it needs no review.
+- `select`: a regex for a site, by its label, picking its value out of its line when the lint can't, with the value in its one capture group: `select = { url = ':(\d+)$' }`. In a group using set ops, it picks each member out of the site's block, one for each match: `select = { table = '^([a-z_]+) ' }`.
+- `why`: why the sites must change together, which the lint shows when a relation fails and the hooks show beside the group: `why = "nginx rejects a larger body before the app sees it"`. A group using judged ops must give one. Rewording it needs no review.
 
-Ops are of two kinds, and a group uses one. Value ops, `=`, `!=`, `<`, `<=`, `>`, `>=`, compare single values, and the lint checks them. Structural ops, `same-as` (duplicated code), `same-shape` (types and schemas with the same fields), `subset-of` and `superset-of`, relate code or structure, which the lint records but doesn't compare.
+Ops are of four kinds, by what they read each site as, and a group uses one kind:
+
+| Kind | Ops | Each site is | The lint |
+|---|---|---|---|
+| Value | `=` `!=` `<` `<=` `>` `>=` | one value: a number, a version or a name | compares them on every run |
+| Set | `same-set` `subset-of` `superset-of` | the names in its block, such as an enum's members or a table's columns | compares them on every run |
+| Text | `same-text` | the text of its block, such as steps copied between two workflows | compares them on every run |
+| Judged | `same-as` `same-shape` `description-of` `described-by` | code or prose that only a reader can compare | records each block, and reports a change to one |
+
+The lint treats the judged ops alike, so each tells a reviewer what to compare, and the group's `why` says what must hold: `same-as` relates code that must behave the same, such as one calculation in two languages; `same-shape` relates types and schemas with the same fields; `description-of` relates prose to the code it must stay true of, and `described-by` is the same relation written from the code.
+
+When only part of what two sites share can be compared, relate them twice, with two keys. A table's column names and a model's field names are a set, while their types take a reader, so [examples/demo](examples/demo) marks both blocks for `upload-columns`, a set group, and for `upload-shape`, a judged one.
 
 A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no marker. A group in two repositories names the other's files with `//`; each repository's registry describes its own side.
 
@@ -48,27 +59,31 @@ A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no mar
 - **markers:** a key or label not in lowercase words joined by hyphens, a marker with no label, prose straight after a label with no `.` between, a tag in the old bracket form, and a marker with no line of code after it
 - **block ends:** an END with no marker of its key above it to close, a block holding another of its own key, blocks that overlap, and an END after a marker of a group using value ops
 - **the registry:** none when there are markers, one that isn't TOML or has no `version = 1`, a table not named `["COUPLED:<key>:"]`, a field it doesn't know, and a relation, file or selector it can't read
-- **groups:** a key with no table, a label no marker has or two markers share, a group with fewer than two sites and files, one mixing value and structural ops, a bare op beside other relations, two relations between the same sites, a site relating to itself, a formula or selector in a group of structural ops, a formula multiplying or dividing by 0, and a site or file nothing relates
+- **groups:** a key with no table, a label no marker has or two markers share, a group with fewer than two sites and files, one mixing ops of different kinds, a bare op beside other relations, two relations between the same sites, a site relating to itself, a formula with an op that isn't a value op, a selector in a group of text or judged ops, a group of judged ops with no `why`, a formula multiplying or dividing by 0, and a site or file nothing relates
 - **files:** a file in this repository that isn't there, unless it's marked optional, and one that holds a marker of the group, which should be named by its label
-- **values**, in groups using value ops: a site or file whose value it can't read, and a relation that doesn't hold, with the values it compared, and a reminder to change the values rather than the relation unless what must hold has changed
+- **relations**, in groups using value, set or text ops: a site or file it can't read, and a relation that doesn't hold, with what it compared (the two values, the names only one set holds, or the first line of text that differs), and a reminder to change the sites rather than the relation unless what must hold has changed
 - **the reviewed section:** a group that differs from what it records, with each site's current value in a group using value ops (see [The reviewed section](#the-reviewed-section)), and a key given to `--update` that has no group
 - **the message:** a marker without the message after its label when the [settings](#settings) turn it on, or with one when they don't
 - **unreadable files:** a file holding `COUPLED:` that isn't UTF-8
 
 The lint reads a site's value from the line its marker describes: the one quoted or backticked literal on it, else an image's version (`FROM node:24.22.1-alpine`), else the right-hand side of an assignment, else a directive's value (`client_max_body_size 10m;`), or what its selector picks out. A file gives its value at its pointer, or if it's one line, that line. Versions match on the parts both give, so `24` and `24.22.1` are `=`; numbers compare numerically, ignoring a unit suffix such as `m` in `10m`; anything else compares as text, by `=` and `!=` only.
 
+In a group using set ops, a site's members are the quoted literals on the lines of its block, or each match of its selector. A file gives the items of the JSON list at its pointer, or the keys of the object there, or with no pointer, its lines. Members compare as text, whatever their order.
+
+In a group using `same-text`, a site's text is its block, and a file's is all of it, or the JSON at its pointer. Indentation, blank lines and the markers of sites inside a block aren't part of its text, and nor is how the JSON is laid out.
+
 The lint doesn't read other repositories, since which revision to compare against, and how to reach it, depend on how the two are released. It names them in its status line as not checked.
 
 ## The reviewed section
 
-Relations between values are checked on every run, but structural ops can't be, and a group can lose a site without any relation failing. So `--update <key>` writes, below the groups in the registry, each group it names as it was last reviewed:
+Value, set and text relations are checked on every run, but judged ones can't be, and a group can lose a site without any relation failing. So `--update <key>` writes, below the groups in the registry, each group it names as it was last reviewed:
 
 - a fingerprint of its table
 - each of its sites, by its marker (`"COUPLED:upload-limit: proxy"`)
 - in a group using value ops, the unit on each value, since numbers are compared without their units
-- in a group using structural ops, a fingerprint of each site's block, and of each file in this repository the group names
+- in a group using judged ops, a fingerprint of each site's block, and of each file in this repository the group names
 
-The lint fails when the code differs: a table changed, a site added or removed, a unit changed, or a structural block or named file edited. It names the group's other sites. Read them, change them together so the group holds, then rerun with `--update <key>` to record it, naming each group you've reviewed, so recording is never a blanket step; commit the registry with the change, so its diff shows the group was touched. Values themselves aren't recorded: changing one is checked by its relations. Neither is where a site is, so moving a marked line to another file isn't a change.
+The lint fails when the code differs: a table changed, a site added or removed, a unit changed, or a block or named file of a judged group edited. It names the group's other sites. Read them, change them together so the group holds, then rerun with `--update <key>` to record it, naming each group you've reviewed, so recording is never a blanket step; commit the registry with the change, so its diff shows the group was touched. Values, sets and text aren't recorded: a change to one is checked by its relations. Neither is where a site is, so moving a marked line to another file isn't a change.
 
 A block's fingerprint ignores indentation, blank lines, and the markers and ENDs of blocks nested inside it, so reindenting a block or rewording a marker inside it isn't a change. Sites under an excluded path aren't recorded.
 
@@ -144,7 +159,7 @@ To move to a new release, change the tag in `devbox.json` and run `devbox update
 
 ## Reviewing changes to the registry
 
-Every change to what's coupled reaches the registry. A site added, removed or relabelled, a group's table edited, a structural block changed, or a file holding sites excluded in the settings or marked `COUPLED:IGNORE-FILE`, fails the lint until `--update` records it there. So agents can edit coupled code and pass the build, while a person still reviews each change to the coupling itself, by requiring review of the registry before merging, and letting every other change merge once CI passes.
+Every change to what's coupled reaches the registry. A site added, removed or relabelled, a group's table edited, a block of a judged group changed, or a file holding sites excluded in the settings or marked `COUPLED:IGNORE-FILE`, fails the lint until `--update` records it there. So agents can edit coupled code and pass the build, while a person still reviews each change to the coupling itself, by requiring review of the registry before merging, and letting every other change merge once CI passes.
 
 The lint can't do this on its own: anything that passes the build, an agent can write, `--update` included. The review is enforced where changes merge. On GitHub:
 

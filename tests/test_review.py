@@ -11,7 +11,7 @@ VALUES = """version = 1
 relations = ["proxy >= app"]
 """
 
-STRUCTURE = """version = 1
+JUDGED = """version = 1
 ["COUPLED:vat:"]
 relations = ["invoice same-as cart"]
 """
@@ -82,20 +82,34 @@ def test_moving_a_site_to_another_file_is_not_a_difference() -> None:
     assert differences(UPLOAD, moved, VALUES, VALUES) == []
 
 
-def test_an_edited_structural_block_is_reported_with_the_other_sites() -> None:
+def test_an_edited_block_of_a_judged_group_is_reported_with_the_other_sites() -> None:
     after = {**VAT, "a.py": VAT["a.py"].replace("n / 5", "n / 6")}
-    [problem] = differences(VAT, after, STRUCTURE, STRUCTURE)
+    [problem] = differences(VAT, after, JUDGED, JUDGED)
     assert problem.startswith("a.py:1 It has changed since it was last reviewed")
     assert "b.py:1" in problem
 
 
-def test_reindenting_a_structural_block_is_not_a_difference() -> None:
+def test_reindenting_a_block_of_a_judged_group_is_not_a_difference() -> None:
     after = {**VAT, "a.py": VAT["a.py"].replace("    return", "        return")}
-    assert differences(VAT, after, STRUCTURE, STRUCTURE) == []
+    assert differences(VAT, after, JUDGED, JUDGED) == []
 
 
-def test_an_edited_file_a_structural_group_names_is_reported() -> None:
-    text = STRUCTURE.replace('"invoice same-as cart"', '"invoice same-shape ./schema.json"')
+def test_an_edited_block_of_a_set_or_text_group_is_left_to_the_relations() -> None:
+    after = {**VAT, "a.py": VAT["a.py"].replace("n / 5", "n / 6")}
+    for op in ("same-set", "same-text"):
+        compared = JUDGED.replace("same-as", op)
+        assert differences(VAT, after, compared, compared) == []
+
+
+def test_a_file_a_set_or_text_group_names_is_not_recorded() -> None:
+    for op in ("same-set", "same-text"):
+        text = JUDGED.replace('"invoice same-as cart"', f'"invoice {op} ./vat.txt"')
+        now = current(sites({"a.py": VAT["a.py"]}), registry(text), {"vat.txt": Content("5")})
+        assert [site.site.name for site in now["vat"].sites] == ["COUPLED:vat: invoice"]
+
+
+def test_an_edited_file_a_judged_group_names_is_reported() -> None:
+    text = JUDGED.replace('"invoice same-as cart"', '"invoice same-shape ./schema.json"')
     group = {"a.py": VAT["a.py"]}
     first = current(sites(group), registry(text), {"schema.json": Content("{}")})
     old = reviewed({}, first, ["vat"])
@@ -118,7 +132,7 @@ def test_a_reviewed_group_whose_table_is_gone_is_reported() -> None:
 
 
 def test_recording_one_group_keeps_what_the_others_recorded() -> None:
-    both = registry(VALUES + STRUCTURE.replace("version = 1\n", ""))
+    both = registry(VALUES + JUDGED.replace("version = 1\n", ""))
     now = current(sites({**UPLOAD, **VAT}), both, {})
     first = reviewed({}, now, ["vat"])
     assert list(first) == ["vat"]
