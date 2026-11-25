@@ -20,8 +20,10 @@ The registry, {REGISTRY_FILE} at <dir> by default, holds a table for each group,
 files that can't hold a marker. Reports malformed markers, a marker whose key
 has no table, labels that no marker or more than one has, files that aren't
 there, and sites and files nothing relates. In groups whose ops compare values
-(= != < <= > >=), sets of names (same-set subset-of superset-of) or text
-(same-text), it reports sites that can't be read and relations that don't hold.
+(= != < <= > >=), sets of names (same-set subset-of superset-of
+proper-subset-of proper-superset-of disjoint-from), a value with a set
+(member-of has-member) or text (same-text), it reports sites that can't be
+read and relations that don't hold.
 Files in other repositories aren't checked, and the status line lists their
 repositories.
 

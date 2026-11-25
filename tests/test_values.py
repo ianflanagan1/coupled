@@ -14,6 +14,7 @@ from coupled.core.values import (
     Value,
     block_lines,
     compare,
+    compare_member,
     compare_members,
     compare_text,
     described_line,
@@ -312,11 +313,60 @@ class ComparingMembers(unittest.TestCase):
             compare_members(SetOp.SUPERSET_OF, Members(("a",)), Members(("a", "b"))),
         )
 
+    def test_a_proper_subset_holds_only_names_the_other_holds_and_not_all_of_them(self) -> None:
+        self.assertEqual(
+            Holds(), compare_members(SetOp.PROPER_SUBSET_OF, Members(("a",)), Members(("a", "b")))
+        )
+        self.assertEqual(
+            Fails("`c` is only here"),
+            compare_members(SetOp.PROPER_SUBSET_OF, Members(("a", "c")), Members(("a", "b"))),
+        )
+        self.assertEqual(
+            Fails("both hold the same names"),
+            compare_members(SetOp.PROPER_SUBSET_OF, Members(("a", "b")), Members(("b", "a"))),
+        )
+
+    def test_a_proper_superset_holds_every_name_the_other_holds_and_more(self) -> None:
+        self.assertEqual(
+            Holds(),
+            compare_members(SetOp.PROPER_SUPERSET_OF, Members(("a", "b")), Members(("a",))),
+        )
+        self.assertEqual(
+            Fails("`b` is only there"),
+            compare_members(SetOp.PROPER_SUPERSET_OF, Members(("a",)), Members(("a", "b"))),
+        )
+        self.assertEqual(
+            Fails("both hold the same names"),
+            compare_members(SetOp.PROPER_SUPERSET_OF, Members(("a",)), Members(("a",))),
+        )
+
+    def test_disjoint_sets_share_no_name(self) -> None:
+        self.assertEqual(
+            Holds(), compare_members(SetOp.DISJOINT_FROM, Members(("a",)), Members(("b",)))
+        )
+        self.assertEqual(
+            Fails("`b`, `c` are in both"),
+            compare_members(
+                SetOp.DISJOINT_FROM, Members(("a", "b", "c")), Members(("c", "b", "d"))
+            ),
+        )
+
     def test_a_long_difference_is_cut_short(self) -> None:
         names = tuple(str(n) for n in range(8))
         self.assertEqual(
             Fails("`1`, `2`, `3`, `4`, `5` and 2 more are only here"),
             compare_members(SetOp.SUBSET_OF, Members(names), Members(("0",))),
+        )
+
+
+class ComparingAMember(unittest.TestCase):
+    def test_a_value_is_a_member_of_a_set_that_holds_it(self) -> None:
+        self.assertEqual(Holds(), compare_member(Value("info"), Members(("debug", "info"))))
+
+    def test_a_value_the_set_does_not_hold_is_named_with_the_set(self) -> None:
+        self.assertEqual(
+            Fails("`trace` isn't among `debug`, `info`"),
+            compare_member(Value("trace"), Members(("debug", "info"))),
         )
 
 

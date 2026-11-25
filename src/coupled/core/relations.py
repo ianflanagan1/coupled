@@ -5,8 +5,9 @@ op, the second's through the formula. A site is named by its label, whether a ma
 or the group's table gives it to a site with no marker (see registry.py).
 
 An op is of one of four kinds, by what it reads each site as, and a group uses one kind. Value
-ops compare single values, set ops the names each site holds, and the text op the sites' text,
-so the lint checks all three. Judged ops relate code or prose that only a reader can compare.
+ops compare single values, set ops the names each site holds, or one value with them, and the
+text op the sites' text, so the lint checks all three. Judged ops relate code or prose that only
+a reader can compare.
 """
 
 import re
@@ -35,6 +36,17 @@ class SetOp(StrEnum):
     SAME_SET = "same-set"
     SUBSET_OF = "subset-of"
     SUPERSET_OF = "superset-of"
+    PROPER_SUBSET_OF = "proper-subset-of"
+    PROPER_SUPERSET_OF = "proper-superset-of"
+    DISJOINT_FROM = "disjoint-from"
+
+
+class MemberOp(StrEnum):
+    """An op that relates one value to the names a site holds, as a set op does: it reads one
+    site as a single value and the other as a set."""
+
+    MEMBER_OF = "member-of"
+    HAS_MEMBER = "has-member"
 
 
 class TextOp(StrEnum):
@@ -53,7 +65,7 @@ class JudgedOp(StrEnum):
     DESCRIBED_BY = "described-by"
 
 
-type Op = ValueOp | SetOp | TextOp | JudgedOp
+type Op = ValueOp | SetOp | MemberOp | TextOp | JudgedOp
 
 
 class Kind(StrEnum):
@@ -70,7 +82,7 @@ def kind_of(op: Op) -> Kind:
     match op:
         case ValueOp():
             return Kind.VALUE
-        case SetOp():
+        case SetOp() | MemberOp():
             return Kind.SET
         case TextOp():
             return Kind.TEXT
@@ -80,7 +92,7 @@ def kind_of(op: Op) -> Kind:
             assert_never(op)
 
 
-OPS: tuple[Op, ...] = (*ValueOp, *SetOp, *TextOp, *JudgedOp)
+OPS: tuple[Op, ...] = (*ValueOp, *SetOp, *MemberOp, *TextOp, *JudgedOp)
 
 OPS_TEXT = " ".join(OPS)
 
@@ -117,6 +129,20 @@ class Relation:
     def text(self) -> str:
         formula = "" if self.formula is None else " " + self.formula.text()
         return f"{self.left} {self.op} {self.right}{formula}"
+
+
+def value_side(relation: Relation) -> str | None:
+    """The label of the site a relation reads as one value in a group of set ops: the member
+    in a member-of or has-member relation, or None for any other."""
+    match relation.op:
+        case MemberOp.MEMBER_OF:
+            return relation.left
+        case MemberOp.HAS_MEMBER:
+            return relation.right
+        case ValueOp() | SetOp() | TextOp() | JudgedOp():
+            return None
+        case _:
+            assert_never(relation.op)
 
 
 LABEL = re.compile(NAME_PATTERN)

@@ -294,6 +294,33 @@ def test_a_set_relation_that_does_not_hold_names_what_only_one_site_holds() -> N
     ]
 
 
+def test_an_end_closing_a_block_of_one_line_is_reported() -> None:
+    web = (
+        '// COUPLED:status: web\nexport type Status = "pending" | "stored";\n// COUPLED:status:END'
+    )
+    found = problems({**STATUS_FILES, "web.ts": web}, STATUS, {}, OFF)
+    assert messages_of(found) == [
+        "web.ts:1 Drop the END closing this marker: its block is one line, which the marker "
+        "describes without one"
+    ]
+
+
+def test_an_end_closing_one_line_of_a_value_group_is_reported_once() -> None:
+    files = {
+        **UPLOAD_FILES,
+        "app.py": "# COUPLED:upload-limit: app\nMAX = 8\n# COUPLED:upload-limit:END",
+    }
+    found = messages_of(problems(files, UPLOAD, {}, OFF))
+    assert [m for m in found if "Drop the END" in m] == [
+        "app.py:1 Drop the END closing this marker: its block is one line, which the marker "
+        "describes without one"
+    ]
+
+
+def test_an_end_closing_a_block_of_several_lines_is_fine() -> None:
+    assert problems(STATUS_FILES, STATUS, {}, OFF) == []
+
+
 def test_a_site_s_members_are_compared_with_a_file_s() -> None:
     groups = (
         '["COUPLED:status:"]\nrelations = ["web subset-of app", "statuses same-set app"]\n'
@@ -307,6 +334,72 @@ def test_a_site_s_members_are_compared_with_a_file_s() -> None:
         "./statuses.json#/all `statuses same-set app` doesn't hold with app.py:1: `stored` is "
         "only there."
     )
+
+
+DEFAULT_STATUS = STATUS.replace(
+    'relations = ["web subset-of app"]',
+    'relations = ["web subset-of app", "default member-of app"]',
+)
+
+DEFAULT_STATUS_FILES = {
+    **STATUS_FILES,
+    "config.py": 'DEFAULT_STATUS = "pending"  # COUPLED:status: default',
+}
+
+
+def test_a_value_that_is_a_member_of_a_site_s_set_has_no_problems() -> None:
+    assert problems(DEFAULT_STATUS_FILES, DEFAULT_STATUS, {}, OFF) == []
+
+
+def test_a_value_that_is_not_a_member_names_the_set() -> None:
+    files = {
+        **DEFAULT_STATUS_FILES,
+        "config.py": "DEFAULT_STATUS = 'new'  # COUPLED:status: default",
+    }
+    assert messages_of(problems(files, DEFAULT_STATUS, {}, OFF)) == [
+        "config.py:1 `default member-of app` doesn't hold with app.py:1: `new` isn't among "
+        "`pending`, `stored`. Change the value or the members so it holds; change the relation "
+        "only if what must hold has changed"
+    ]
+
+
+def test_a_set_has_a_member_read_from_a_file() -> None:
+    groups = (
+        '["COUPLED:status:"]\nrelations = ["app has-member default"]\n'
+        'has-no-marker = { default = "./status" }\n'
+    )
+    app = {"app.py": STATUS_FILES["app.py"]}
+    assert problems(app, groups, {"status": Content("stored\n")}, OFF) == []
+    found = problems(app, groups, {"status": Content("new\n")}, OFF)
+    assert messages_of(found)[0].startswith(
+        "app.py:1 `app has-member default` doesn't hold with ./status: `new` isn't among"
+    )
+
+
+def test_a_member_s_value_that_cannot_be_read_is_reported() -> None:
+    files = {**DEFAULT_STATUS_FILES, "config.py": "status(DEFAULT)  # COUPLED:status: default"}
+    found = messages_of(problems(files, DEFAULT_STATUS, {}, OFF))
+    assert len(found) == 1
+    assert found[0].startswith("config.py:1 Can't read this site's value: ")
+
+
+def test_a_site_read_both_as_a_value_and_as_a_set_is_reported() -> None:
+    groups = DEFAULT_STATUS.replace('"web subset-of app"', '"web subset-of default"')
+    found = messages_of(problems(DEFAULT_STATUS_FILES, groups, {}, OFF))
+    assert found == [
+        f'{REGISTRY} ["COUPLED:status:"] Read `default` as one value or as a set of names, '
+        "not both: `default member-of app` reads it as a value, and `web subset-of default` as "
+        "a set"
+    ]
+
+
+def test_an_end_after_a_marker_read_as_a_value_is_reported() -> None:
+    files = {
+        **DEFAULT_STATUS_FILES,
+        "config.py": 'DEFAULT_STATUS = "pending"  # COUPLED:status: default\n# COUPLED:status:END',
+    }
+    found = messages_of(problems(files, DEFAULT_STATUS, {}, OFF))
+    assert any(m.startswith("config.py:1 Drop the END") for m in found)
 
 
 def test_a_marker_s_regex_picks_each_of_its_site_s_members() -> None:

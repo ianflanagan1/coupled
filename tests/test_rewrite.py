@@ -44,13 +44,17 @@ def test_a_site_s_relations_are_each_seen_from_it() -> None:
 def test_an_op_with_a_direction_flips_from_the_other_side() -> None:
     group = registry('["COUPLED:f:"]\nrelations = ["ini subset-of phpstan"]\n').groups["f"]
     assert relations_of(group, "phpstan") == "superset-of ini"
+    group = registry('["COUPLED:f:"]\nrelations = ["free proper-subset-of pro"]\n').groups["f"]
+    assert relations_of(group, "pro") == "proper-superset-of free"
+    group = registry('["COUPLED:f:"]\nrelations = ["default member-of levels"]\n').groups["f"]
+    assert relations_of(group, "levels") == "has-member default"
     group = registry('["COUPLED:f:"]\nrelations = ["readme description-of cli"]\n').groups["f"]
     assert relations_of(group, "readme") == "description-of cli"
     assert relations_of(group, "cli") == "described-by readme"
 
 
 def test_an_op_without_a_direction_is_the_same_from_the_other_side() -> None:
-    for op in ("same-set", "same-text", "same-as", "same-shape"):
+    for op in ("same-set", "disjoint-from", "same-text", "same-as", "same-shape"):
         group = registry(f'["COUPLED:f:"]\nrelations = ["a {op} b"]\n').groups["f"]
         assert relations_of(group, "b") == f"{op} a"
 

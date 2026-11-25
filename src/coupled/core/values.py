@@ -1,5 +1,6 @@
 """Reading what a marker describes, as a group's ops need it, and comparing two of them: a
-single value under an op and formula, the names in a block as a set, or a block's text."""
+single value under an op and formula, the names in a block as a set, a value with a set, or a
+block's text."""
 
 import json
 import re
@@ -386,14 +387,32 @@ def compare_members(op: SetOp, left: Members, right: Members) -> Holds | Fails:
             only = [(here, "here")]
         case SetOp.SUPERSET_OF:
             only = [(there, "there")]
+        case SetOp.PROPER_SUBSET_OF:
+            if not here and not there:
+                return Fails("both hold the same names")
+            only = [(here, "here")]
+        case SetOp.PROPER_SUPERSET_OF:
+            if not here and not there:
+                return Fails("both hold the same names")
+            only = [(there, "there")]
+        case SetOp.DISJOINT_FROM:
+            shared = [name for name in left.names if name in right.names]
+            return Fails(f"{_listed(shared)} {_are(shared)} in both") if shared else Holds()
         case _:
             assert_never(op)
-    shown = [
-        f"{_listed(names)} {'is' if len(names) == 1 else 'are'} only {where}"
-        for names, where in only
-        if names
-    ]
+    shown = [f"{_listed(names)} {_are(names)} only {where}" for names, where in only if names]
     return Fails("; ".join(shown)) if shown else Holds()
+
+
+def compare_member(value: Value, members: Members) -> Holds | Fails:
+    """Whether members holds value, and if not, the members it isn't among."""
+    if value.text in members.names:
+        return Holds()
+    return Fails(f"`{value.text}` isn't among {_listed(list(members.names))}")
+
+
+def _are(names: list[str]) -> str:
+    return "is" if len(names) == 1 else "are"
 
 
 def _listed(names: list[str]) -> str:

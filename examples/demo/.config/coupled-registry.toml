@@ -65,8 +65,8 @@ relations = ["model same-set table"]
 why = "the model reads each column of the table by its name"
 
 ["COUPLED:upload-status:"]
-relations = ["web subset-of app", "table superset-of app"]
-why = "the web shows only statuses the app can give an upload, and the table accepts every status the app gives, as well as the ones a cleanup job sets"
+relations = ["web subset-of app", "table proper-superset-of app", "new member-of app"]
+why = "the web shows only statuses the app can give an upload, the table accepts every status the app gives as well as the ones a cleanup job sets, and a new upload starts in one of the app's statuses"
 
 # Written by coupled --update: each group as it was last reviewed. Don't edit below this line.
 
@@ -142,7 +142,8 @@ definition = "20fbaa1caacee9b0"
 "COUPLED:upload-shape: type" = { block = "598a80c547fe978e" }
 
 [reviewed."COUPLED:upload-status:"]
-definition = "986470b274c8af08"
+definition = "60030e630e2672f7"
 "COUPLED:upload-status: app" = {}
+"COUPLED:upload-status: new" = {}
 "COUPLED:upload-status: table" = {}
 "COUPLED:upload-status: web" = {}

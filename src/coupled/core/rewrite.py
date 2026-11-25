@@ -26,6 +26,7 @@ from coupled.core.relations import (
     Arith,
     Formula,
     JudgedOp,
+    MemberOp,
     Op,
     SetOp,
     TextOp,
@@ -120,6 +121,7 @@ def _flipped(op: Op) -> Op:
             ValueOp.EQ
             | ValueOp.NE
             | SetOp.SAME_SET
+            | SetOp.DISJOINT_FROM
             | TextOp.SAME_TEXT
             | JudgedOp.SAME_AS
             | JudgedOp.SAME_SHAPE
@@ -137,6 +139,14 @@ def _flipped(op: Op) -> Op:
             return SetOp.SUPERSET_OF
         case SetOp.SUPERSET_OF:
             return SetOp.SUBSET_OF
+        case SetOp.PROPER_SUBSET_OF:
+            return SetOp.PROPER_SUPERSET_OF
+        case SetOp.PROPER_SUPERSET_OF:
+            return SetOp.PROPER_SUBSET_OF
+        case MemberOp.MEMBER_OF:
+            return MemberOp.HAS_MEMBER
+        case MemberOp.HAS_MEMBER:
+            return MemberOp.MEMBER_OF
         case JudgedOp.DESCRIPTION_OF:
             return JudgedOp.DESCRIBED_BY
         case JudgedOp.DESCRIBED_BY:

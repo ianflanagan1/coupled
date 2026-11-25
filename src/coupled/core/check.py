@@ -21,11 +21,13 @@ from coupled.core.relations import (
     Arith,
     Formula,
     Kind,
+    MemberOp,
     Op,
     SetOp,
     TextOp,
     ValueOp,
     kind_of,
+    value_side,
 )
 from coupled.core.rewrite import Wanted, wanted, written_after
 from coupled.core.settings import MarkerMessage
@@ -40,6 +42,7 @@ from coupled.core.values import (
     Verdict,
     block_lines,
     compare,
+    compare_member,
     compare_members,
     compare_text,
     read_file_members,
@@ -231,6 +234,12 @@ def check(
     return problems
 
 
+_ONE_LINE_END = (
+    "Drop the END closing this marker: its block is one line, which the marker describes "
+    "without one"
+)
+
+
 def _site_problems(sites: list[Site]) -> list[Problem]:
     """The problems with markers and ENDs on their own."""
     problems: list[Problem] = []
@@ -242,6 +251,8 @@ def _site_problems(sites: list[Site]) -> list[Problem]:
                 problems += [Problem(site.where, message) for message in messages]
             case _:
                 assert_never(site.found)
+        if isinstance(site.found, Marker) and site.closed and len(site.block) == 1:
+            problems.append(Problem(site.where, _ONE_LINE_END))
         if isinstance(site.found, Marker) and site.code is None:
             problems.append(
                 Problem(
@@ -429,7 +440,7 @@ class _GroupCheck:
             )
         if any(r.formula is not None and not isinstance(r.op, ValueOp) for r in relations):
             problems.append(f"Use a formula only with {' '.join(ValueOp)}")
-        reads = f"{' '.join([*ValueOp, *SetOp])}, which read values and members"
+        reads = f"{' '.join([*ValueOp, *SetOp, *MemberOp])}, which read values and members"
         regexes_unused = bool(kinds) and not {Kind.VALUE, Kind.SET}.intersection(kinds)
         if self._group.regexes and regexes_unused:
             problems.append(f"Use a regex in `{HAS_NO_MARKER}` only with {reads}")
@@ -438,6 +449,8 @@ class _GroupCheck:
                 f'Say why these sites are coupled, as `why = "..."`: the lint can\'t compare '
                 f"what {ops[0]} relates, so `why` is all that tells a reviewer what must hold"
             )
+        if kinds == [Kind.SET]:
+            problems += self._read_both_ways()
         pairs: list[frozenset[str]] = []
         for relation in relations:
             if relation.formula is not None and (
@@ -490,24 +503,65 @@ class _GroupCheck:
                 )
         return result
 
+    def _read_both_ways(self) -> list[str]:
+        """A problem for each site of a group of set ops that one relation reads as a value
+        and another as a set."""
+        as_value: dict[str, str] = {}
+        as_set: dict[str, str] = {}
+        for relation in self._group.relations:
+            member = value_side(relation)
+            for label in (relation.left, relation.right):
+                reads = as_value if label == member else as_set
+                reads.setdefault(label, relation.text())
+        return [
+            f"Read `{label}` as one value or as a set of names, not both: `{value}` reads it "
+            f"as a value, and `{as_set[label]}` as a set"
+            for label, value in as_value.items()
+            if label in as_set
+        ]
+
+    def _value_labels(self) -> set[str]:
+        """The labels of the sites the group reads as one value each."""
+        kind = group_kind(self._group)
+        if kind is Kind.VALUE:
+            return {label for r in self._group.relations for label in (r.left, r.right)}
+        return {label for r in self._group.relations if (label := value_side(r)) is not None}
+
     def _ends(self) -> list[Problem]:
-        if group_kind(self._group) is not Kind.VALUE:
-            return []
+        values = self._value_labels()
+        why = (
+            "relates values"
+            if group_kind(self._group) is Kind.VALUE
+            else "reads this site as one value"
+        )
         return [
             Problem(
                 site.where,
-                f"Drop the END closing this marker: COUPLED:{self._key}: relates values, so "
-                "each marker describes one line",
+                f"Drop the END closing this marker: COUPLED:{self._key}: {why}, so its marker "
+                "describes one line",
             )
-            for site, _ in self._sites
-            if site.closed
+            for site, label in self._sites
+            if site.closed and len(site.block) > 1 and label in values
         ]
 
     def _values(self) -> list[Problem]:
         """The relations of a group using value ops."""
+        readings, problems = self._read_values(self._value_labels())
+        if problems:
+            return problems
+        for pair in self._pairs(readings, ValueOp):
+            verdict = compare(pair.op, pair.mine.text, pair.other.text, pair.formula)
+            problems += self._failure(pair.text, pair.where, pair.other_where, verdict, "values")
+        return problems
+
+    def _read_values(self, labels: set[str]) -> tuple[dict[str, tuple[str, Value]], list[Problem]]:
+        """The value at each site and file with one of labels, with where it was read, and
+        the problems with those that can't be read."""
         problems: list[Problem] = []
         readings: dict[str, tuple[str, Value]] = {}
         for site, label in self._sites:
+            if label not in labels:
+                continue
             if site.code is None:
                 reading: Value | Unreadable = Unreadable(_NO_LINE)
             else:
@@ -528,6 +582,8 @@ class _GroupCheck:
                 case _:
                     assert_never(reading)
         for label, ref, text in self._local_files():
+            if label not in labels:
+                continue
             reading = read_file_value(text, ref.pointer, self._group.regex(label)) or Unreadable(
                 "it has more than one line: point at its value with #<pointer> if it's JSON, "
                 f'or pick it out with a regex, `{label} = {{ file = "{ref.text()}", '
@@ -540,18 +596,17 @@ class _GroupCheck:
                     problems.append(Problem(ref.text(), f"Can't read this file's value: {reason}"))
                 case _:
                     assert_never(reading)
-        if problems:
-            return problems
-        for pair in self._pairs(readings, ValueOp):
-            verdict = compare(pair.op, pair.mine.text, pair.other.text, pair.formula)
-            problems += self._failure(pair, verdict, "values")
-        return problems
+        return readings, problems
 
     def _members(self) -> list[Problem]:
-        """The relations of a group using set ops."""
-        problems: list[Problem] = []
+        """The relations of a group using set ops, which read the member in a member-of or
+        has-member relation as one value, and every other site as a set."""
+        values = self._value_labels()
+        values_read, problems = self._read_values(values)
         readings: dict[str, tuple[str, Members]] = {}
         for site, label in self._sites:
+            if label in values:
+                continue
             if not site.block:
                 reading: Members | Unreadable = Unreadable(_NO_LINE)
             else:
@@ -572,6 +627,8 @@ class _GroupCheck:
                 case _:
                     assert_never(reading)
         for label, ref, text in self._local_files():
+            if label in values:
+                continue
             reading = read_file_members(text, ref.pointer, self._group.regex(label))
             match reading:
                 case Members():
@@ -586,7 +643,23 @@ class _GroupCheck:
             return problems
         for pair in self._pairs(readings, SetOp):
             verdict = compare_members(pair.op, pair.mine, pair.other)
-            problems += self._failure(pair, verdict, "members")
+            problems += self._failure(pair.text, pair.where, pair.other_where, verdict, "members")
+        for relation in self._group.relations:
+            member = value_side(relation)
+            if member is None:
+                continue
+            members = relation.right if member == relation.left else relation.left
+            value, held = values_read.get(member), readings.get(members)
+            if value is None or held is None:
+                continue
+            where = {member: value[0], members: held[0]}
+            problems += self._failure(
+                relation.text(),
+                where[relation.left],
+                where[relation.right],
+                compare_member(value[1], held[1]),
+                "value or the members",
+            )
         return problems
 
     def _texts(self) -> list[Problem]:
@@ -610,7 +683,9 @@ class _GroupCheck:
         if problems:
             return problems
         for pair in self._pairs(readings, TextOp):
-            problems += self._failure(pair, compare_text(pair.mine, pair.other), "text")
+            problems += self._failure(
+                pair.text, pair.where, pair.other_where, compare_text(pair.mine, pair.other), "text"
+            )
         return problems
 
     def _local_files(self) -> list[tuple[str, FileRef, str]]:
@@ -643,9 +718,12 @@ class _GroupCheck:
                 pairs.append(_Pair(relation.text(), op, relation.formula, *mine, *other))
         return pairs
 
-    def _failure[T, O: Op](self, pair: _Pair[T, O], verdict: Verdict, things: str) -> list[Problem]:
-        """The problem with a pair whose relation doesn't hold, things being what to change so
-        that it does."""
+    def _failure(
+        self, text: str, where: str, other_where: str, verdict: Verdict, things: str
+    ) -> list[Problem]:
+        """The problem with the relation text, between the readings at where and other_where,
+        when it doesn't hold, things being what to change so that it does. It's reported at
+        where."""
         match verdict:
             case Holds():
                 return []
@@ -654,8 +732,8 @@ class _GroupCheck:
                 because = "" if why is None else f" They're coupled because {why.rstrip('.')}."
                 return [
                     Problem(
-                        pair.where,
-                        f"`{pair.text}` doesn't hold with {pair.other_where}: {shown}.{because} "
+                        where,
+                        f"`{text}` doesn't hold with {other_where}: {shown}.{because} "
                         f"Change the {things} so it holds; change the relation only if what "
                         "must hold has changed",
                     )
@@ -663,8 +741,8 @@ class _GroupCheck:
             case Incomparable(reason):
                 return [
                     Problem(
-                        pair.where,
-                        f"Can't compare with {pair.other_where} for `{pair.text}`: {reason}",
+                        where,
+                        f"Can't compare with {other_where} for `{text}`: {reason}",
                     )
                 ]
             case _:

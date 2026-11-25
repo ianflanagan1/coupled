@@ -16,6 +16,7 @@ from coupled.core.relations import (
     Formula,
     JudgedOp,
     Kind,
+    MemberOp,
     Relation,
     SetOp,
     TextOp,
@@ -59,6 +60,11 @@ def test_a_relation_can_relate_sets_text_and_prose_about_code() -> None:
         ("web subset-of app", SetOp.SUBSET_OF),
         ("app superset-of web", SetOp.SUPERSET_OF),
         ("model same-set table", SetOp.SAME_SET),
+        ("free proper-subset-of pro", SetOp.PROPER_SUBSET_OF),
+        ("pro proper-superset-of free", SetOp.PROPER_SUPERSET_OF),
+        ("reserved disjoint-from routes", SetOp.DISJOINT_FROM),
+        ("default member-of levels", MemberOp.MEMBER_OF),
+        ("levels has-member default", MemberOp.HAS_MEMBER),
         ("ci same-text release", TextOp.SAME_TEXT),
         ("readme description-of cli", JudgedOp.DESCRIPTION_OF),
         ("cli described-by readme", JudgedOp.DESCRIBED_BY),
@@ -70,6 +76,7 @@ def test_a_relation_can_relate_sets_text_and_prose_about_code() -> None:
 def test_each_op_is_of_one_kind() -> None:
     assert {kind_of(op) for op in ValueOp} == {Kind.VALUE}
     assert {kind_of(op) for op in SetOp} == {Kind.SET}
+    assert {kind_of(op) for op in MemberOp} == {Kind.SET}
     assert {kind_of(op) for op in TextOp} == {Kind.TEXT}
     assert {kind_of(op) for op in JudgedOp} == {Kind.JUDGED}
 
