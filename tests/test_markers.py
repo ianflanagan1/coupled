@@ -6,28 +6,32 @@ def found(*lines: str) -> list[Found]:
 
 
 def test_a_marker_names_its_key_and_its_site_s_label() -> None:
-    assert found("MAX = 8  # COUPLED:upload-limit: app") == [Marker("upload-limit", "app", ())]
+    assert found("MAX = 8  # COUPLED:upload-limit: app") == [
+        Marker("upload-limit", "app", None, ())
+    ]
 
 
 def test_a_label_can_be_several_words_joined_by_hyphens() -> None:
-    assert found("# COUPLED:node-version: ci-matrix") == [Marker("node-version", "ci-matrix", ())]
+    assert found("# COUPLED:node-version: ci-matrix") == [
+        Marker("node-version", "ci-matrix", None, ())
+    ]
 
 
 def test_prose_can_follow_a_label_after_a_full_stop() -> None:
     assert found("# COUPLED:upload-limit: proxy. Larger bodies get a 413.") == [
-        Marker("upload-limit", "proxy", ())
+        Marker("upload-limit", "proxy", None, ())
     ]
 
 
 def test_prose_can_come_before_a_marker() -> None:
     assert found("# Pinned for the build. COUPLED:node-version: docker") == [
-        Marker("node-version", "docker", ())
+        Marker("node-version", "docker", None, ())
     ]
 
 
 def test_a_marker_in_a_block_comment_ends_before_its_closer() -> None:
-    assert found("<!-- COUPLED:x: readme -->") == [Marker("x", "readme", ())]
-    assert found("/* COUPLED:x: css */") == [Marker("x", "css", ())]
+    assert found("<!-- COUPLED:x: readme -->") == [Marker("x", "readme", None, ())]
+    assert found("/* COUPLED:x: css */") == [Marker("x", "css", None, ())]
 
 
 def test_a_marker_without_a_label_asks_for_one() -> None:
@@ -39,7 +43,7 @@ def test_a_marker_without_a_label_asks_for_one() -> None:
 def test_prose_straight_after_a_label_asks_for_a_full_stop_between() -> None:
     [marker] = found("# COUPLED:upload-limit: proxy answers with a 413")
     assert isinstance(marker, Marker) and marker.label == "proxy"
-    assert "End the label with `.`" in marker.problems[0]
+    assert "`COUPLED:upload-limit: proxy. <prose>`" in marker.problems[0]
 
 
 def test_a_label_written_against_the_key_is_malformed() -> None:
@@ -78,15 +82,15 @@ def test_the_ignore_directive_mentioned_in_a_line_is_neither_a_marker_nor_ignore
     None
 ):
     assert found("Write `COUPLED:IGNORE-FILE` on a line.", "# COUPLED:x: app") == [
-        Marker("x", "app", ())
+        Marker("x", "app", None, ())
     ]
     assert found('DIRECTIVE = "COUPLED:IGNORE-FILE"') == []
 
 
 def test_two_markers_can_share_a_comment() -> None:
     assert found("X = 1  # COUPLED:a: x. COUPLED:b: y") == [
-        Marker("a", "x", ()),
-        Marker("b", "y", ()),
+        Marker("a", "x", None, ()),
+        Marker("b", "y", None, ()),
     ]
 
 
@@ -131,5 +135,56 @@ def test_the_stop_is_the_column_after_the_label() -> None:
 
 
 def test_a_marker_in_a_haskell_or_ocaml_block_comment_ends_before_its_closer() -> None:
-    assert found("{- COUPLED:x: haskell -}") == [Marker("x", "haskell", ())]
-    assert found("(* COUPLED:x: ocaml *)") == [Marker("x", "ocaml", ())]
+    assert found("{- COUPLED:x: haskell -}") == [Marker("x", "haskell", None, ())]
+    assert found("(* COUPLED:x: ocaml *)") == [Marker("x", "ocaml", None, ())]
+
+
+def test_a_regex_after_the_label_picks_the_site_s_value() -> None:
+    assert found('- "8080:8080"  # COUPLED:port: compose /"(\\d+):/') == [
+        Marker("port", "compose", '"(\\d+):', ())
+    ]
+
+
+def test_a_slash_in_a_regex_is_written_escaped() -> None:
+    [marker] = found("# COUPLED:x: owners /^\\/(\\S+)/")
+    assert isinstance(marker, Marker) and marker.regex == "^\\/(\\S+)"
+
+
+def test_prose_can_follow_a_regex_after_a_full_stop() -> None:
+    assert found("# COUPLED:x: app /(\\d+)/. In MB.") == [Marker("x", "app", "(\\d+)", ())]
+
+
+def test_a_marker_in_a_block_comment_ends_its_regex_before_the_closer() -> None:
+    assert found('<!-- COUPLED:x: form /max="(\\d+)"/ -->') == [
+        Marker("x", "form", 'max="(\\d+)"', ())
+    ]
+
+
+def test_the_stop_is_the_column_after_a_regex() -> None:
+    line = "X = 1  # COUPLED:x: app /(\\d+)/. More."
+    [placed] = find_markers([line])
+    assert line[placed.stop :] == ". More."
+
+
+def test_a_regex_with_no_closing_slash_asks_for_one() -> None:
+    [marker] = found("# COUPLED:x: app /(\\d+)")
+    assert isinstance(marker, Marker) and marker.regex is None
+    assert "Close the regex" in marker.problems[0]
+
+
+def test_an_empty_regex_asks_for_one() -> None:
+    [marker] = found("# COUPLED:x: app //")
+    assert isinstance(marker, Marker) and marker.regex is None
+    assert "between the slashes" in marker.problems[0]
+
+
+def test_a_regex_that_does_not_compile_is_reported() -> None:
+    [marker] = found("# COUPLED:x: app /(\\d+/")
+    assert isinstance(marker, Marker) and marker.regex is None
+    assert "Fix the regex" in marker.problems[0]
+
+
+def test_prose_straight_after_a_regex_asks_for_a_full_stop_between() -> None:
+    [marker] = found("# COUPLED:x: app /(\\d+)/ in MB")
+    assert isinstance(marker, Marker) and marker.regex == "(\\d+)"
+    assert "`COUPLED:x: app /(\\d+)/. <prose>`" in marker.problems[0]

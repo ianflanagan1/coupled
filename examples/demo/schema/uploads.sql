@@ -1,5 +1,5 @@
 -- COUPLED:upload-shape: table
--- COUPLED:upload-columns: table
+-- COUPLED:upload-columns: table /^([a-z_]+) /
 CREATE TABLE uploads (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

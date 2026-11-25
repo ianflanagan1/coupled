@@ -151,3 +151,16 @@ def _opener(syntax: Syntax) -> re.Pattern[str]:
 
 def _comment_line(syntax: Syntax) -> re.Pattern[str]:
     return re.compile(rf"^\s*(?:{_openers(syntax)}){_docblock(syntax)}")
+
+
+def open_block_closer(prefix: str, syntax: Syntax) -> str | None:
+    """The closer of the block comment in syntax still open at the end of prefix, the text of a
+    line before some point in it, or None if none is. A docblock's `*` line is in a `/* */`
+    comment. A block comment opened on an earlier line, other than a docblock, isn't seen."""
+    for opener, closer in syntax.block:
+        start = prefix.rfind(opener)
+        if start >= 0 and prefix.find(closer, start + len(opener)) < 0:
+            return closer
+    if _C_BLOCK in syntax.block and re.match(r"\s*\*(?!/)", prefix):
+        return _C_BLOCK[1]
+    return None

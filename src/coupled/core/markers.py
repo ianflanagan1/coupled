@@ -2,8 +2,10 @@
 
 A marker is `COUPLED:<key>: <label>`, in a comment, or as plain text where the file has no
 comments, such as Markdown. Its key names a group, which the registry describes; its label
-names this site within the group, for the registry's relations. Prose goes before `COUPLED:`,
-or after the label and a `.`: `COUPLED:<key>: <label>. <prose>`.
+names this site within the group, for the registry's relations. A regex between slashes may
+follow the label, `COUPLED:<key>: <label> /<regex>/`, picking the site's value, or each of its
+members, out of the code it describes, with a `/` in it written `\\/`. Prose goes before
+`COUPLED:`, or after the label, or its regex, and a `.`: `COUPLED:<key>: <label>. <prose>`.
 
 `COUPLED:<key>:END` closes the block the nearest marker of its key above it opens, so that the
 marker describes every line between them.
@@ -36,11 +38,13 @@ _IGNORES_FILE = re.compile(rf"[^\w]*COUPLED:{_IGNORE_FILE}[^\w]*")
 @final
 @dataclass(frozen=True)
 class Marker:
-    """`COUPLED:<key>: <label>`, label None when it has none, with what's wrong with it on its
-    own, as messages saying how to fix it."""
+    """`COUPLED:<key>: <label> [/<regex>/]`, label None when it has none and regex None when it
+    has none or it can't be read, with what's wrong with it on its own, as messages saying how
+    to fix it."""
 
     key: str
     label: str | None
+    regex: str | None
     problems: tuple[str, ...]
 
     def text(self) -> str:
@@ -77,9 +81,9 @@ type Found = Marker | End | Malformed
 @dataclass(frozen=True)
 class Placed:
     """A marker or END found in a file's lines: what it is, the index of its line, the column
-    `COUPLED:` starts at and the column after its label, or after its key's `:` when it has no
-    label, and the index of the line holding the END that closes its block, or None if nothing
-    closes it."""
+    `COUPLED:` starts at and the column after its label, or its regex, or after its key's `:`
+    when it has no label, and the index of the line holding the END that closes its block, or
+    None if nothing closes it."""
 
     found: Found
     line: int
@@ -149,6 +153,7 @@ def _marker(rest: str) -> tuple[Found, int]:
     unlabelled = Marker(
         key.group(1),
         None,
+        None,
         (
             f"Label this site: `COUPLED:{key.group(1)}: <label>`, the name the registry's "
             "relations give it",
@@ -163,21 +168,56 @@ def _marker(rest: str) -> tuple[Found, int]:
     label = _NAME.match(after, 1)
     if label is None:
         return unlabelled, key.end()
-    following = after[label.end() :]
+    end = label.end()
+    regex: str | None = None
+    problems: list[str] = []
+    if after.startswith(" /", end):
+        regex, length, problem = _regex(after[end + 1 :], key.group(1), label.group())
+        end += 1 + length
+        if problem is not None:
+            problems.append(problem)
+    following = after[end:]
     if following and not following.startswith(".") and not following.lstrip().startswith(CLOSERS):
-        if following.startswith(" ") and following.strip():
-            return Marker(
-                key.group(1),
-                label.group(),
-                (
-                    f"End the label with `.` before the prose after it: "
-                    f"`COUPLED:{key.group(1)}: {label.group()}. <prose>`",
-                ),
-            ), key.end() + label.end()
-        return Malformed(
-            "Write the label in lowercase letters and digits, in words joined by single hyphens"
-        ), key.end()
-    return Marker(key.group(1), label.group(), ()), key.end() + label.end()
+        if (not following.startswith(" ") or not following.strip()) and end > label.end():
+            return Malformed(
+                f"End the regex after `{label.group()}` with its `/`, then `.` before any prose"
+            ), key.end()
+        if not following.startswith(" ") or not following.strip():
+            return Malformed(
+                "Write the label in lowercase letters and digits, in words joined by single hyphens"
+            ), key.end()
+        written = after[1:end]
+        problems.append(
+            f"End the marker with `.` before the prose after it: "
+            f"`COUPLED:{key.group(1)}: {written}. <prose>`"
+        )
+    return Marker(key.group(1), label.group(), regex, tuple(problems)), key.end() + end
+
+
+def _regex(text: str, key: str, label: str) -> tuple[str | None, int, str | None]:
+    """The regex `/<regex>/` that text starts with, how much of text it takes, and what's wrong
+    with it, if anything, in which case the regex is None. A `\\` escapes the character after
+    it, so `\\/` doesn't close it."""
+    index = 1
+    while index < len(text) and text[index] != "/":
+        index += 2 if text[index] == "\\" else 1
+    if index >= len(text):
+        return (
+            None,
+            len(text.rstrip()),
+            (
+                f"Close the regex after `{label}` with `/`: `COUPLED:{key}: {label} /<regex>/`, "
+                "writing a `/` in it as `\\/`"
+            ),
+        )
+    regex = text[1:index]
+    if not regex:
+        return None, index + 1, f"Write a regex between the slashes after `{label}`, or drop them"
+    try:
+        re.compile(regex)
+    except re.error as error:
+        return None, index + 1, f"Fix the regex /{regex}/ after `{label}`: {error}"
+    return regex, index + 1, None
 
 
 def _paired(placed: list[Placed]) -> list[Placed]:

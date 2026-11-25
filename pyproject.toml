@@ -10,12 +10,12 @@ coupled = "coupled.__main__:main"
 coupled-hook = "coupled.__main__:hook"
 
 [tool.uv.sources]
-# COUPLED:cli-kit-version: pyproject
+# COUPLED:cli-kit-version: pyproject /tag = "([^"]+)"/
 cli-kit = { git = "https://github.com/ianflanagan1/cli-kit", tag = "v0.1.0" }
-# COUPLED:repo-settings-version: pyproject
+# COUPLED:repo-settings-version: pyproject /tag = "([^"]+)"/
 repo-settings = { git = "https://github.com/ianflanagan1/repo-settings", tag = "v0.1.0" }
 # repo-settings depends on it, and uv reads sources only from the project it's syncing.
-# COUPLED:git-default-branch-version: pyproject
+# COUPLED:git-default-branch-version: pyproject /tag = "([^"]+)"/
 git-default-branch = { git = "https://github.com/ianflanagan1/git-default-branch", tag = "v0.1.0" }
 
 [dependency-groups]

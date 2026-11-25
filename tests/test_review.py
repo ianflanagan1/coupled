@@ -63,6 +63,15 @@ def test_a_unit_changed_is_reported() -> None:
     assert problem.startswith("nginx.conf:1 Its unit has changed from `m` to `k`")
 
 
+def test_a_marker_s_regex_changed_is_reported() -> None:
+    before = {**UPLOAD, "app.py": "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app /= (\\d+)/"}
+    after = {**UPLOAD, "app.py": "MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app /(\\d+)/"}
+    [problem] = differences(before, after, VALUES, VALUES)
+    assert problem.startswith("app.py:1 Its regex has changed from /= (\\d+)/ to /(\\d+)/")
+    [problem] = differences(UPLOAD, after, VALUES, VALUES)
+    assert problem.startswith("app.py:1 Its regex has changed from none to /(\\d+)/")
+
+
 def test_a_changed_table_is_reported() -> None:
     changed = VALUES.replace(">=", ">")
     [problem] = differences(UPLOAD, UPLOAD, VALUES, changed)

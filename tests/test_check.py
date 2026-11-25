@@ -147,10 +147,10 @@ def test_a_file_s_value_is_read_at_its_pointer() -> None:
     assert "doesn't hold with ./limits.json#/upload_mb: 10m = 5" in messages_of(found)[0]
 
 
-def test_a_selector_picks_a_file_s_value_out_of_its_lines() -> None:
+def test_a_file_s_regex_picks_its_value_out_of_its_lines() -> None:
     groups = (
         '["COUPLED:upload-limit:"]\nrelations = ["app = env"]\n'
-        "has-no-marker = { env = \"./.env\" }\nselect = { env = '^UPLOAD_MB=(\\d+)' }\n"
+        "has-no-marker = { env = { file = \"./.env\", regex = '^UPLOAD_MB=(\\d+)' } }\n"
     )
     files = {"app.py": UPLOAD_FILES["app.py"]}
     env: dict[str, FileRead] = {".env": Content("NAME=x\nUPLOAD_MB=8\n")}
@@ -159,16 +159,15 @@ def test_a_selector_picks_a_file_s_value_out_of_its_lines() -> None:
     assert "doesn't hold with ./.env: 8 = 9" in messages_of(problems(files, groups, env, OFF))[0]
 
 
-def test_a_file_picked_out_by_both_a_pointer_and_a_selector_is_reported() -> None:
+def test_a_file_picked_out_by_both_a_pointer_and_a_regex_is_reported() -> None:
     groups = (
         '["COUPLED:upload-limit:"]\nrelations = ["app = limits"]\n'
-        'has-no-marker = { limits = "./limits.json#/upload_mb" }\n'
-        "select = { limits = '(\\d+)' }\n"
+        "has-no-marker = { limits = { file = './limits.json#/upload_mb', regex = '(\\d+)' } }\n"
     )
     found = problems(
         {"app.py": UPLOAD_FILES["app.py"]}, groups, {"limits.json": Content("{}")}, OFF
     )
-    assert any("with its #pointer or with `select`, not both" in m for m in messages_of(found))
+    assert any("with its #pointer or its regex, not both" in m for m in messages_of(found))
 
 
 def test_a_file_that_holds_a_marker_of_the_group_cannot_be_said_to_have_no_comments() -> None:
@@ -226,19 +225,37 @@ def test_relating_two_sites_twice_is_reported() -> None:
     assert any("in only one relation" in m for m in messages_of(found))
 
 
-def test_a_selector_picks_a_site_s_value() -> None:
+def test_a_marker_s_regex_picks_its_site_s_value() -> None:
     files = {
-        "a.env": "APP_URL=http://localhost:8080  # COUPLED:port: url",
+        "a.env": "APP_URL=http://localhost:8080  # COUPLED:port: url /:(\\d+)$/",
         "b.env": "HTTP_PORT=8080  # COUPLED:port: port",
     }
-    groups = '["COUPLED:port:"]\nrelations = ["url = port"]\nselect = { url = \':(\\d+)$\' }\n'
+    groups = '["COUPLED:port:"]\nrelations = ["url = port"]\n'
     assert problems(files, groups, {}, OFF) == []
+    files["b.env"] = "HTTP_PORT=8081  # COUPLED:port: port"
+    assert "8080 = 8081" in messages_of(problems(files, groups, {}, OFF))[0]
 
 
-def test_an_unreadable_value_asks_for_a_selector() -> None:
+def test_an_unreadable_value_asks_for_a_regex_after_the_marker_s_label() -> None:
     files = {**UPLOAD_FILES, "app.py": "f('a', 'b')  # COUPLED:upload-limit: app"}
     found = problems(files, UPLOAD, {}, OFF)
-    assert any("select = { app = '<regex>' }" in m for m in messages_of(found))
+    assert any("`COUPLED:upload-limit: app /<regex>/`" in m for m in messages_of(found))
+
+
+def test_a_regex_holding_the_closer_of_its_block_comment_is_reported() -> None:
+    files = {
+        **UPLOAD_FILES,
+        "app.css": "--max: 8; /* COUPLED:upload-limit: app /: (\\d+)\\s*/ */",
+    }
+    del files["app.py"]
+    found = problems(files, UPLOAD, {}, OFF)
+    assert any("app.css:1 The regex holds `*/`" in m for m in messages_of(found))
+
+
+def test_a_regex_ending_in_a_star_is_fine_in_a_line_comment() -> None:
+    files = {**UPLOAD_FILES, "app.js": "const MAX = 8; // COUPLED:upload-limit: app /= (\\d+)\\s*/"}
+    del files["app.py"]
+    assert problems(files, UPLOAD, {}, OFF) == []
 
 
 def test_an_end_after_a_marker_of_a_value_group_is_reported() -> None:
@@ -292,21 +309,19 @@ def test_a_site_s_members_are_compared_with_a_file_s() -> None:
     )
 
 
-def test_a_selector_picks_each_of_a_site_s_members() -> None:
+def test_a_marker_s_regex_picks_each_of_its_site_s_members() -> None:
     files = {
         "model.py": (
-            "# COUPLED:columns: model\nclass Upload:\n    id: str\n    size_bytes: int\n"
+            "# COUPLED:columns: model /^(\\w+): /\nclass Upload:\n"
+            "    id: str\n    size_bytes: int\n"
             "# COUPLED:columns:END"
         ),
         "table.sql": (
-            "-- COUPLED:columns: table\nCREATE TABLE uploads (\n    id TEXT,\n"
+            "-- COUPLED:columns: table /^([a-z_]+) /\nCREATE TABLE uploads (\n    id TEXT,\n"
             "    size_bytes INTEGER\n);\n-- COUPLED:columns:END"
         ),
     }
-    groups = (
-        '["COUPLED:columns:"]\nrelations = ["model same-set table"]\n'
-        "select = { model = '^(\\w+): ', table = '^([a-z_]+) ' }\n"
-    )
+    groups = '["COUPLED:columns:"]\nrelations = ["model same-set table"]\n'
     assert problems(files, groups, {}, OFF) == []
     files["table.sql"] = files["table.sql"].replace("size_bytes", "bytes")
     assert (
@@ -315,11 +330,11 @@ def test_a_selector_picks_each_of_a_site_s_members() -> None:
     )
 
 
-def test_a_site_whose_members_cannot_be_read_asks_for_a_selector() -> None:
+def test_a_site_whose_members_cannot_be_read_asks_for_a_regex() -> None:
     web = "// COUPLED:status: web\nexport type Status = Pending | Stored;"
     found = problems({**STATUS_FILES, "web.ts": web}, STATUS, {}, OFF)
     assert [p.where for p in found] == ["web.ts:1"]
-    assert "select = { web = '<regex>' }" in found[0].message
+    assert "`COUPLED:status: web /<regex>/`" in found[0].message
 
 
 STEPS = """
@@ -420,9 +435,19 @@ def test_a_formula_with_an_op_that_does_not_compare_values_is_reported() -> None
     assert any("Use a formula only with = != < <= > >=" in m for m in messages_of(found))
 
 
-def test_a_selector_in_a_text_or_judged_group_is_reported() -> None:
-    found = problems(STEPS_FILES, STEPS + "select = { ci = 'npm' }\n", {}, OFF)
-    assert any("Use `select` only with" in m for m in messages_of(found))
+def test_a_regex_in_a_text_or_judged_group_is_reported() -> None:
+    files = {**STEPS_FILES}
+    files["ci.yml"] = files["ci.yml"].replace("COUPLED:setup: ci", "COUPLED:setup: ci /npm/")
+    found = problems(files, STEPS, {}, OFF)
+    assert any(
+        "ci.yml:1 Drop this marker's regex: use a regex only with" in m for m in messages_of(found)
+    )
+    groups = STEPS + "has-no-marker = { notes = { file = './notes.txt', regex = 'npm' } }\n"
+    groups = groups.replace(
+        '"ci same-text release"', '"ci same-text release", "notes same-text ci"'
+    )
+    found = problems(STEPS_FILES, groups, {"notes.txt": Content("npm")}, OFF)
+    assert any("Use a regex in `has-no-marker` only with" in m for m in messages_of(found))
 
 
 def test_a_marker_with_a_blank_line_before_its_code_is_reported() -> None:
@@ -506,24 +531,15 @@ def test_a_site_with_no_file_that_nothing_relates_is_reported() -> None:
     ]
 
 
-def test_a_selector_for_a_site_with_no_file_is_reported() -> None:
-    groups = GOOGLE + "select = { google = '(.*)' }\n"
-    found = problems(REDIRECT, groups, {}, OFF)
-    assert any(
-        "Drop `google` from `select`: it has no file for the lint to read" in m
-        for m in messages_of(found)
-    )
-
-
-def test_a_selector_for_a_file_in_another_repository_is_reported() -> None:
+def test_a_regex_for_a_file_in_another_repository_is_reported() -> None:
     groups = (
         '["COUPLED:upload-limit:"]\nrelations = ["app = api"]\n'
-        'has-no-marker = { api = "//github.com/me/api/limits.txt" }\n'
-        "select = { api = '(\\d+)' }\n"
+        "has-no-marker = { api = { file = '//github.com/me/api/limits.txt', regex = '(\\d+)' } }\n"
     )
     found = problems({"app.py": UPLOAD_FILES["app.py"]}, groups, {}, OFF)
     assert any(
-        "Drop `api` from `select`: it's in another repository, which the lint doesn't read" in m
+        "Drop the regex from `api` in `has-no-marker`: it's in another repository, which the "
+        "lint doesn't read" in m
         for m in messages_of(found)
     )
 

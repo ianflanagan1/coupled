@@ -122,24 +122,24 @@ class ReadingValues(unittest.TestCase):
         ):
             self.assertIsInstance(read_value(code, None), Unreadable, code)
 
-    def test_a_selector_picks_its_capture_group(self) -> None:
+    def test_a_regex_picks_its_capture_group(self) -> None:
         self.assertEqual(Value("8080"), read_value("APP_URL=http://localhost:8080", r":(\d+)$"))
 
-    def test_a_selector_without_a_group_picks_its_whole_match(self) -> None:
+    def test_a_regex_without_a_group_picks_its_whole_match(self) -> None:
         self.assertEqual(
             Value("/tmp/profiles"), read_value("RUN mkdir /tmp/profiles \\", r"/tmp/\w+")
         )
 
-    def test_a_selector_that_does_not_match_is_unreadable(self) -> None:
+    def test_a_regex_that_does_not_match_is_unreadable(self) -> None:
         self.assertIsInstance(read_value("X = 1", r"port (\d+)"), Unreadable)
 
 
 class FileValues(unittest.TestCase):
-    def test_a_selector_picks_a_value_out_of_a_file_matching_at_each_line(self) -> None:
+    def test_a_regex_picks_a_value_out_of_a_file_matching_at_each_line(self) -> None:
         content = "NAME=x\nUPLOAD_MB=8\n"
         self.assertEqual(Value("8"), read_file_value(content, None, r"^UPLOAD_MB=(\d+)$"))
 
-    def test_a_selector_that_matches_nothing_in_a_file_is_unreadable(self) -> None:
+    def test_a_regex_that_matches_nothing_in_a_file_is_unreadable(self) -> None:
         self.assertIsInstance(read_file_value("NAME=x\n", None, r"^UPLOAD_MB=(\d+)"), Unreadable)
 
     def test_a_one_line_file_is_its_value(self) -> None:
@@ -232,23 +232,23 @@ class ReadingMembers(unittest.TestCase):
     def test_a_member_found_twice_is_one_member(self) -> None:
         self.assertEqual(Members(("a", "b")), read_members(("'a', 'b'", "'a'"), None))
 
-    def test_a_selector_picks_each_member_by_its_capture_group(self) -> None:
+    def test_a_regex_picks_each_member_by_its_capture_group(self) -> None:
         block = ("CREATE TABLE uploads (", "id TEXT PRIMARY KEY,", "size_bytes INTEGER", ");")
         self.assertEqual(Members(("id", "size_bytes")), read_members(block, r"^([a-z_]+) "))
 
-    def test_a_selector_without_a_group_picks_each_whole_match(self) -> None:
+    def test_a_regex_without_a_group_picks_each_whole_match(self) -> None:
         block = ("disable_functions = exec,popen",)
         self.assertEqual(Members(("exec", "popen")), read_members(block, r"(?<=[ ,])\w+"))
 
     def test_a_block_with_no_quoted_value_is_unreadable(self) -> None:
         self.assertIsInstance(read_members(("id: str", "name: str"), None), Unreadable)
 
-    def test_a_selector_that_matches_nothing_is_unreadable(self) -> None:
+    def test_a_regex_that_matches_nothing_is_unreadable(self) -> None:
         self.assertIsInstance(read_members(("id: str",), r"^(\w+) ="), Unreadable)
 
 
 class FileMembers(unittest.TestCase):
-    def test_a_selector_picks_each_member_out_of_a_file_s_lines(self) -> None:
+    def test_a_regex_picks_each_member_out_of_a_file_s_lines(self) -> None:
         content = "- pending\n- stored\nother\n"
         self.assertEqual(
             Members(("pending", "stored")), read_file_members(content, None, r"^- (\w+)")

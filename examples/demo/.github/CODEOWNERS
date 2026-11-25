@@ -6,7 +6,7 @@
 
 # The registry, and the settings, whose exclude list and registry-file could take sites out of
 # the lint without the registry changing.
-# COUPLED:registry-path: owners
+# COUPLED:registry-path: owners /^\/(\S+)/
 /.config/coupled-registry.toml @demo-org/coupling-reviewers
 /.config/coupled.toml @demo-org/coupling-reviewers
 

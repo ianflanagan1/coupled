@@ -2,13 +2,13 @@
   display: grid;
 }
 
-@media (max-width: 640px) { /* COUPLED:breakpoint: css */
+@media (max-width: 640px) { /* COUPLED:breakpoint: css /max-width: (\d+)px/ */
   .upload {
     display: block;
   }
 }
 
-@media (min-width: 641px) { /* COUPLED:breakpoint: desktop */
+@media (min-width: 641px) { /* COUPLED:breakpoint: desktop /min-width: (\d+)px/ */
   .upload {
     gap: 1rem;
   }

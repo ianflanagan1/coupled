@@ -7,29 +7,26 @@ version = 1
 
 ["COUPLED:cli-kit-version:"]
 relations = ["flake = pyproject"]
-select = { flake = 'cli-kit/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"' }
 
 ["COUPLED:git-default-branch-version:"]
 relations = ["flake = pyproject"]
-select = { flake = 'git-default-branch/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"' }
 
 ["COUPLED:repo-settings-version:"]
 relations = ["flake = pyproject"]
-select = { flake = 'repo-settings/(v[0-9.]+)', pyproject = 'tag = "([^"]+)"' }
 
 # Written by coupled --update: each group as it was last reviewed. Don't edit below this line.
 
 [reviewed."COUPLED:cli-kit-version:"]
-definition = "552fa011a9c1d245"
-"COUPLED:cli-kit-version: flake" = {}
-"COUPLED:cli-kit-version: pyproject" = {}
+definition = "f9f5850bd0cd554d"
+"COUPLED:cli-kit-version: flake" = { regex = "cli-kit\\/(v[0-9.]+)" }
+"COUPLED:cli-kit-version: pyproject" = { regex = "tag = \"([^\"]+)\"" }
 
 [reviewed."COUPLED:git-default-branch-version:"]
-definition = "be88bed9f9c71869"
-"COUPLED:git-default-branch-version: flake" = {}
-"COUPLED:git-default-branch-version: pyproject" = {}
+definition = "f9f5850bd0cd554d"
+"COUPLED:git-default-branch-version: flake" = { regex = "git-default-branch\\/(v[0-9.]+)" }
+"COUPLED:git-default-branch-version: pyproject" = { regex = "tag = \"([^\"]+)\"" }
 
 [reviewed."COUPLED:repo-settings-version:"]
-definition = "645d6151c0b90098"
-"COUPLED:repo-settings-version: flake" = {}
-"COUPLED:repo-settings-version: pyproject" = {}
+definition = "f9f5850bd0cd554d"
+"COUPLED:repo-settings-version: flake" = { regex = "repo-settings\\/(v[0-9.]+)" }
+"COUPLED:repo-settings-version: pyproject" = { regex = "tag = \"([^\"]+)\"" }

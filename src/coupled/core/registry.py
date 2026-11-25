@@ -5,14 +5,11 @@ default.
 
     ["COUPLED:upload-limit:"]
     relations = ["cdn >= proxy", "proxy >= app", "proxy = limits", "app = env"]
-    has-no-marker = {
-        limits = "./limits.json#/upload_mb",
-        env = "./.env?",
-        cdn = "//github.com/vendor/cdn/defaults.json#/max_upload_mb",
-    }
+    has-no-marker.limits = "./limits.json#/upload_mb"
+    has-no-marker.env = { file = "./.env?", regex = '^UPLOAD_MB=(\\d+)' }
+    has-no-marker.cdn = "//github.com/vendor/cdn/defaults.json#/max_upload_mb"
     in-another-registry = { api = "//github.com/acme/api" }
     has-no-file = { cdn = "the CDN's dashboard > Network > Maximum Upload Size" }
-    select = { app = 'MAX_UPLOAD_MB = (\\d+)', env = '^UPLOAD_MB=(\\d+)' }
 
 Each group is a table named as the marker's key is searched for, so a search for
 `COUPLED:upload-limit:` finds the group's table beside its sites. `relations` relates its sites
@@ -21,19 +18,22 @@ site gets one in the table, by why it has no marker here: `has-no-marker` gives 
 that holds none, in this repository as `./<path>[?][#<pointer>]`, because it can't hold one or
 not where its value is, `?` when it's only sometimes there and the pointer a JSON Pointer to its
 value, or in another repository that keeps no such group as
-`//<git-host>/<owner>/<name>/<path>[#<pointer>]`, which the lint doesn't read;
+`//<git-host>/<owner>/<name>/<path>[#<pointer>]`, which the lint doesn't read; or either as a
+table, `{ file = "<file>", regex = '<regex>' }`, where its regex, if it has one, picks its value,
+or each of its members, out of its lines, in place of a pointer;
 `in-another-registry` gives another repository that keeps the group too, as
 `//<git-host>/<owner>/<name>`, where the label is one of that repository's own sites, which its
 markers or its registry describe and the lint doesn't read; and `has-no-file` says where a site
 in no file at all is set, such as in a cloud console, which the lint can't read either.
-`select` gives a regex, by a label, picking a site's value out of its line or file, or each of
-its members out of its block or file. `why` says why the sites must
-change together, which the lint and the hooks show beside them. Neither why nor where a site
-with no file is set is part of what's reviewed.
+A marker carries its own regex, after its label (see markers.py). `why` says why the sites
+must change together, which the lint and the hooks show beside them. A table gives its fields
+in that order: relations, has-no-marker, in-another-registry, has-no-file, why. Neither why
+nor where a site with no file is set is part of what's reviewed.
 
 Below the groups, `--update` writes the reviewed section: each group as it was last reviewed, by
 a fingerprint of its table, and each of its sites, with the unit on its value in a group of
-value ops, or a fingerprint of its block in a group of judged ops. A group that differs from it
+value ops, or a fingerprint of its block in a group of judged ops, and its marker's regex, if it
+has one. A group that differs from it
 fails until it's reviewed and recorded again.
 """
 
@@ -62,9 +62,9 @@ _GROUP_FIELDS = (
     HAS_NO_MARKER,
     IN_ANOTHER_REGISTRY,
     HAS_NO_FILE,
-    "select",
     "why",
 )
+_SELECT = "select"
 _LOCAL_FILE = re.compile(r"\./([^\s?#/][^\s?#]*)(\?)?(?:#(/\S*))?")
 _REPO = r"//([^\s/?#]+/[^\s/?#]+/[^\s/?#]+)"
 _REMOTE_FILE = re.compile(_REPO + r"/([^\s?#]+)(?:#(/\S*))?")
@@ -130,7 +130,7 @@ class Group:
     """A group's table: its relations; each site with no marker here, by its label, as the field
     that says why: a file that holds no marker, in this repository or in another that keeps
     no such group; another repository that keeps the group and describes the site; or where a
-    site in no file is set; a selector for each label that has one; and
+    site in no file is set; the regex of each file that has one; and
     why its sites must change together, if it says. problems are what's wrong with the table,
     as messages saying how to fix it; definition is a fingerprint of what it states, which
     leaves out why and where each site with no file is set."""
@@ -141,13 +141,14 @@ class Group:
     remote_files: tuple[tuple[str, FileRef], ...]
     other_registries: tuple[tuple[str, str], ...]
     no_file_sites: tuple[tuple[str, str], ...]
-    selectors: tuple[tuple[str, str], ...]
+    regexes: tuple[tuple[str, str], ...]
     why: str | None
     problems: tuple[str, ...]
     definition: str
 
-    def selector(self, label: str) -> str | None:
-        for name, regex in self.selectors:
+    def regex(self, label: str) -> str | None:
+        """The regex of the file labelled label, if it has one."""
+        for name, regex in self.regexes:
             if name == label:
                 return regex
         return None
@@ -165,11 +166,13 @@ class Group:
 @dataclass(frozen=True)
 class ReviewedSite:
     """A site as the reviewed section records it: its marker (`COUPLED:<key>: <label>`), or a
-    file's ref, with the unit on its value and the fingerprint of its block, where recorded."""
+    file's ref, with the unit on its value, the fingerprint of its block and its marker's
+    regex, where recorded."""
 
     name: str
     unit: str | None
     block: str | None
+    regex: str | None
 
 
 @final
@@ -227,8 +230,15 @@ def parse(text: str) -> Registry | Unparseable:
 
 def _group(key: str, table: dict[str, object]) -> Group:
     problems: list[str] = []
-    for field in sorted(table.keys() - set(_GROUP_FIELDS)):
+    if _SELECT in table:
+        problems.append(
+            f"Drop `{_SELECT}`, and give each site its regex: a marked site after its marker's "
+            "label, `COUPLED:<key>: <label> /<regex>/`, and a file in "
+            f"`{HAS_NO_MARKER}` as `<label> = {{ file = \"<file>\", regex = '<regex>' }}`"
+        )
+    for field in sorted(table.keys() - {*_GROUP_FIELDS, _SELECT}):
         problems.append(f"Drop `{field}`: a group's table holds {', '.join(_GROUP_FIELDS)}")
+    problems.extend(_order_problems(list(table)))
     relations: list[Relation] = []
     written = _strings(table.get("relations"), "relations", problems)
     if not written and "relations" not in table:
@@ -239,11 +249,15 @@ def _group(key: str, table: dict[str, object]) -> Group:
             problems.append(parsed)
         else:
             relations.append(parsed)
-    files = _entries(table, HAS_NO_MARKER, parse_file, _LOCAL_FORM, _file_advice, problems)
+    unmarked = _entries(table, HAS_NO_MARKER, _unmarked, _LOCAL_FORM, _file_advice, problems)
+    files = tuple((label, ref) for label, (ref, _) in unmarked)
+    regexes = tuple((label, regex) for label, (_, regex) in unmarked if regex is not None)
     other_registries = _entries(
-        table, IN_ANOTHER_REGISTRY, parse_repo, _REPO_FORM, _repo_advice, problems
+        table, IN_ANOTHER_REGISTRY, _text(parse_repo), _REPO_FORM, _repo_advice, problems
     )
-    no_file_sites = _entries(table, HAS_NO_FILE, _where, _WHERE_FORM, _where_advice, problems)
+    no_file_sites = _entries(
+        table, HAS_NO_FILE, _text(_where), _WHERE_FORM, _where_advice, problems
+    )
     labels: dict[str, str] = {}
     for field, entries in (
         (HAS_NO_MARKER, files),
@@ -256,22 +270,18 @@ def _group(key: str, table: dict[str, object]) -> Group:
                     f"Give `{label}` one entry: it's in both `{labels[label]}` and `{field}`"
                 )
             labels.setdefault(label, field)
-    selectors: list[tuple[str, str]] = []
-    select = table.get("select", {})
-    if not isinstance(select, dict) or not all(isinstance(regex, str) for regex in select.values()):
-        problems.append("Write `select` as a table of regexes by label: `{ app = '(\\d+)' }`")
-    else:
-        selectors = sorted((str(label), str(regex)) for label, regex in select.items())
     why = table.get("why")
     if not isinstance(why, str | None):
         problems.append("Write `why` as a string: why the sites must change together")
         why = None
     definition = _fingerprint(
         [*(f"relation {' '.join(text.split())}" for text in written)]
-        + [f"{HAS_NO_MARKER} {label} {ref.text()}" for label, ref in files]
+        + [
+            f"{HAS_NO_MARKER} {label} {ref.text()}" + ("" if regex is None else f" /{regex}/")
+            for label, (ref, regex) in unmarked
+        ]
         + [f"{IN_ANOTHER_REGISTRY} {label} //{repo}" for label, repo in other_registries]
         + [f"{HAS_NO_FILE} {label}" for label, _ in no_file_sites]
-        + [f"select {label} {regex}" for label, regex in selectors]
     )
     return Group(
         key,
@@ -280,11 +290,63 @@ def _group(key: str, table: dict[str, object]) -> Group:
         tuple((label, ref) for label, ref in files if ref.repo is not None),
         other_registries,
         no_file_sites,
-        tuple(selectors),
+        regexes,
         why,
         tuple(problems),
         definition,
     )
+
+
+def _order_problems(fields: list[str]) -> list[str]:
+    """A problem naming the first of a table's fields, as written, that is out of _GROUP_FIELDS'
+    order, and the field it must come before; none when they're in order. A dotted field takes
+    its place from its first line, as TOML gives its keys in the order they first appear."""
+    written = [field for field in fields if field in _GROUP_FIELDS]
+    ordered = sorted(written, key=_GROUP_FIELDS.index)
+    for found, expected in zip(written, ordered, strict=True):
+        if found != expected:
+            fields_in_order = ", ".join(_GROUP_FIELDS[:-1]) + f" and {_GROUP_FIELDS[-1]}"
+            return [
+                f"Put `{expected}` before `{found}`: a group's table gives "
+                f"{fields_in_order}, in that order"
+            ]
+    return []
+
+
+def _text[V](parse_value: Callable[[str], V | None]) -> Callable[[object], V | None]:
+    """parse_value, for an entry that must be a string."""
+    return lambda value: parse_value(value) if isinstance(value, str) else None
+
+
+_FILE_TABLE_FIELDS = ("file", "regex")
+
+
+def _unmarked(value: object) -> tuple[FileRef, str | None] | None:
+    """The file an entry of has-no-marker gives, and its regex, if it has one, or None if it
+    isn't written as `"<file>"` or `{ file = "<file>"[, regex = '<regex>'] }`."""
+    if isinstance(value, str):
+        ref = parse_file(value)
+        return None if ref is None else (ref, None)
+    if not isinstance(value, dict) or "file" not in value or set(value) - set(_FILE_TABLE_FIELDS):
+        return None
+    text, regex = value["file"], value.get("regex")
+    if not isinstance(text, str) or not isinstance(regex, str | None):
+        return None
+    if regex is not None and _regex_error(regex) is not None:
+        return None
+    ref = parse_file(text)
+    return None if ref is None else (ref, regex)
+
+
+def _regex_error(regex: str) -> str | None:
+    """Why regex isn't one, or None if it is."""
+    if not regex:
+        return "it's empty"
+    try:
+        re.compile(regex)
+    except re.error as error:
+        return str(error)
+    return None
 
 
 def _where(text: str) -> str | None:
@@ -298,7 +360,26 @@ _REPO_FORM = "//<git-host>/<owner>/<name>"
 _WHERE_FORM = "where it's set"
 
 
-def _file_advice(label: str, text: str) -> str:
+def _file_advice(label: str, value: object) -> str:
+    table = f"`{label} = {{ file = \"./<path>[?]\", regex = '<regex>' }}`"
+    if isinstance(value, dict):
+        extra = sorted(set(value) - set(_FILE_TABLE_FIELDS))
+        if extra:
+            return (
+                f"Drop `{extra[0]}` from `{label}` in `{HAS_NO_MARKER}`: a file's table holds "
+                f"file and regex, {table}"
+            )
+        regex = value.get("regex")
+        if isinstance(regex, str) and (error := _regex_error(regex)) is not None:
+            return f"Fix the regex /{regex}/ for `{label}` in `{HAS_NO_MARKER}`: {error}"
+        if "file" not in value:
+            return f"Give `{label}` in `{HAS_NO_MARKER}` its file: {table}"
+        if not isinstance(regex, str | None):
+            return f"Write the regex for `{label}` in `{HAS_NO_MARKER}` as a string: {table}"
+        file = value["file"]
+        text = file if isinstance(file, str) else ""
+    else:
+        text = value if isinstance(value, str) else ""
     if text.startswith("//") and "?" in text:
         return (
             f"Drop the `?` from `{label}` in `{HAS_NO_MARKER}`: only a file in this "
@@ -306,12 +387,13 @@ def _file_advice(label: str, text: str) -> str:
         )
     return (
         f'Write `{label}` in `{HAS_NO_MARKER}` as `{label} = "{_LOCAL_FORM}"`, or for a '
-        f'file in another repository, `{label} = "{_REMOTE_FORM}"`'
+        f'file in another repository, `{label} = "{_REMOTE_FORM}"`, or with a regex picking '
+        f"its value out, as {table}"
     )
 
 
-def _repo_advice(label: str, text: str) -> str:
-    if parse_remote(text) is not None:
+def _repo_advice(label: str, value: object) -> str:
+    if isinstance(value, str) and parse_remote(value) is not None:
         return (
             f"Write `{label}` in `{IN_ANOTHER_REGISTRY}` as the repository alone, "
             f'`{label} = "{_REPO_FORM}"`, where `{label}` is a site of the group too; if that '
@@ -320,35 +402,35 @@ def _repo_advice(label: str, text: str) -> str:
     return f'Write `{label}` in `{IN_ANOTHER_REGISTRY}` as `{label} = "{_REPO_FORM}"`'
 
 
-def _where_advice(label: str, _text: str) -> str:
+def _where_advice(label: str, _value: object) -> str:
     return f'Write `{label}` in `{HAS_NO_FILE}` as `{label} = "{_WHERE_FORM}"`'
 
 
 def _entries[V](
     table: dict[str, object],
     field: str,
-    parse_value: Callable[[str], V | None],
+    parse_value: Callable[[object], V | None],
     form: str,
-    advice: Callable[[str, str], str],
+    advice: Callable[[str, object], str],
     problems: list[str],
 ) -> tuple[tuple[str, V], ...]:
     """Each site field gives a label to, with its value as parse_value reads it, in label
     order. form is how an entry is written, and advice says how to write one, given its label
-    and text, when parse_value can't read it."""
+    and value, when parse_value can't read it."""
     value = table.get(field, {})
     if not isinstance(value, dict):
         problems.append(f'Write `{field}` as a table by label: `{{ <label> = "{form}" }}`')
         return ()
     found: list[tuple[str, V]] = []
-    for label, text in sorted(value.items()):
-        parsed = parse_value(text) if isinstance(text, str) else None
+    for label, entry in sorted(value.items()):
+        parsed = parse_value(entry)
         if LABEL.fullmatch(label) is None:
             problems.append(
                 f"Name each site in `{field}` by a label, in lowercase letters and digits "
                 f"joined by single hyphens: `{label}` isn't one"
             )
         elif parsed is None:
-            problems.append(advice(label, text if isinstance(text, str) else ""))
+            problems.append(advice(label, entry))
         else:
             found.append((label, parsed))
     return tuple(found)
@@ -387,12 +469,16 @@ def _reviewed(data: object) -> tuple[dict[str, Reviewed], list[str]]:
                 continue
             if not isinstance(fields, dict):
                 return broken
-            unit, block = fields.get("unit"), fields.get("block")
-            if not isinstance(unit, str | None) or not isinstance(block, str | None):
+            unit, block, regex = fields.get("unit"), fields.get("block"), fields.get("regex")
+            if not all(isinstance(value, str | None) for value in (unit, block, regex)):
                 return broken
-            sites.append(ReviewedSite(site, unit, block))
+            sites.append(ReviewedSite(site, _optional(unit), _optional(block), _optional(regex)))
         reviewed[match.group(1)] = Reviewed(definition, tuple(sites))
     return reviewed, []
+
+
+def _optional(value: object) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 def with_reviewed(text: str, reviewed: dict[str, Reviewed]) -> str:
@@ -416,7 +502,11 @@ def with_reviewed(text: str, reviewed: dict[str, Reviewed]) -> str:
         for site in sorted(group.sites, key=lambda site: site.name):
             fields = [
                 f"{name} = {json.dumps(value)}"
-                for name, value in (("unit", site.unit), ("block", site.block))
+                for name, value in (
+                    ("unit", site.unit),
+                    ("block", site.block),
+                    ("regex", site.regex),
+                )
                 if value is not None
             ]
             inline = "{ " + ", ".join(fields) + " }" if fields else "{}"

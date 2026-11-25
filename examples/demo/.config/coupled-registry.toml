@@ -3,7 +3,6 @@ version = 1
 ["COUPLED:upload-limit:"]
 relations = ["nginx <= cdn", "nginx >= app", "form = app", "api = app", "client = app * 1048576"]
 has-no-marker = { api = "./config/limits.json#/upload_mb" }
-select = { form = 'data-max-mb="(\d+)"' }
 why = "Cloudflare and then nginx reject a larger body with a 413 before the app sees it, the form and the API's limits tell users the app's limit, and the web client refuses a larger file, in bytes, before sending it"
 
 ["COUPLED:oauth-redirect:"]
@@ -18,8 +17,7 @@ why = "nginx must wait longer than the app, and the load balancer longer than ng
 
 ["COUPLED:port:"]
 relations = ["compose = app", "dev = app", "metrics != app"]
-has-no-marker = { dev = "./web/package.json" }
-select = { compose = '"(\d+):', dev = 'localhost:(\d+)' }
+has-no-marker = { dev = { file = "./web/package.json", regex = 'localhost:(\d+)' } }
 why = "compose publishes the port the app listens on, the web's dev server sends API calls to it, and metrics are served on a port of their own"
 
 ["COUPLED:node-version:"]
@@ -38,12 +36,10 @@ why = "the web package's tooling runs the backend under the Python version it pi
 
 ["COUPLED:breakpoint:"]
 relations = ["css = ts", "desktop > css", "ts = desktop - 1"]
-select = { css = 'max-width: (\d+)px', desktop = 'min-width: (\d+)px' }
 why = "the layout code switches to mobile at the width the stylesheet does, and the desktop layout starts one pixel above it"
 
 ["COUPLED:registry-path:"]
 relations = ["owners = settings"]
-select = { owners = '^/(\S+)' }
 why = "CODEOWNERS must name the registry where the settings put it, or a change to it skips review"
 
 ["COUPLED:safe-name:"]
@@ -66,7 +62,6 @@ why = "the object store sends its notice in the shape its published schema gives
 
 ["COUPLED:upload-columns:"]
 relations = ["model same-set table"]
-select = { model = '^(\w+): ', table = '^([a-z_]+) ' }
 why = "the model reads each column of the table by its name"
 
 ["COUPLED:upload-status:"]
@@ -76,9 +71,9 @@ why = "the web shows only statuses the app can give an upload, and the table acc
 # Written by coupled --update: each group as it was last reviewed. Don't edit below this line.
 
 [reviewed."COUPLED:breakpoint:"]
-definition = "da861291c54d6bcd"
-"COUPLED:breakpoint: css" = {}
-"COUPLED:breakpoint: desktop" = {}
+definition = "df8427a9bbe656d8"
+"COUPLED:breakpoint: css" = { regex = "max-width: (\\d+)px" }
+"COUPLED:breakpoint: desktop" = { regex = "min-width: (\\d+)px" }
 "COUPLED:breakpoint: ts" = {}
 
 [reviewed."COUPLED:node-setup:"]
@@ -97,17 +92,17 @@ definition = "af2772f3200a02a6"
 "COUPLED:oauth-redirect: app" = {}
 
 [reviewed."COUPLED:port:"]
-definition = "dd14c6d2103b3bb2"
+definition = "4e63368791f0ee1c"
 "COUPLED:port: app" = {}
-"COUPLED:port: compose" = {}
+"COUPLED:port: compose" = { regex = "\"(\\d+):" }
 "COUPLED:port: metrics" = {}
 
 [reviewed."COUPLED:python-version:"]
 definition = "fbe2c1d7cea4fc2f"
 
 [reviewed."COUPLED:registry-path:"]
-definition = "3421604aea224ae7"
-"COUPLED:registry-path: owners" = {}
+definition = "e6a9ead6e7dec193"
+"COUPLED:registry-path: owners" = { regex = "^\\/(\\S+)" }
 "COUPLED:registry-path: settings" = {}
 
 [reviewed."COUPLED:request-timeout:"]
@@ -128,16 +123,16 @@ definition = "11b820a743477dfc"
 "COUPLED:storage-event: handler" = { block = "4a50db61ab7e5b6c" }
 
 [reviewed."COUPLED:upload-columns:"]
-definition = "f5f533399488fa75"
-"COUPLED:upload-columns: model" = {}
-"COUPLED:upload-columns: table" = {}
+definition = "dc563b405dbae70c"
+"COUPLED:upload-columns: model" = { regex = "^(\\w+): " }
+"COUPLED:upload-columns: table" = { regex = "^([a-z_]+) " }
 
 [reviewed."COUPLED:upload-limit:"]
-definition = "79ccfc5a5bf95ff4"
+definition = "a39faf32beee10e4"
 "COUPLED:upload-limit: app" = {}
 "COUPLED:upload-limit: cdn" = {}
 "COUPLED:upload-limit: client" = {}
-"COUPLED:upload-limit: form" = {}
+"COUPLED:upload-limit: form" = { regex = "data-max-mb=\"(\\d+)\"" }
 "COUPLED:upload-limit: nginx" = { unit = "m" }
 
 [reviewed."COUPLED:upload-shape:"]

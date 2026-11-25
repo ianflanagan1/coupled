@@ -5,9 +5,10 @@ again with --update.
 It records each group's table by a fingerprint, and each of its sites by its marker. What the
 lint compares on every run it doesn't record: the values, sets and text that value, set and text
 ops relate. It records what it can't compare: the unit on each value, which a comparison
-ignores, and in a group of judged ops, a fingerprint of each site's block and of each file in
-this repository the group names. So a table changed, a site added or removed, a unit changed or
-a judged block edited all fail.
+ignores; the regex each marker carries, which decides what's compared; and in a group of judged
+ops, a fingerprint of each site's block and of each file in this repository the group names. So
+a table changed, a site added or removed, a unit or a marker's regex changed or a judged block
+edited all fail.
 """
 
 import hashlib
@@ -22,6 +23,7 @@ from coupled.core.check import (
     Site,
     group_kind,
     labelled,
+    regex_of,
 )
 from coupled.core.markers import marker_text
 from coupled.core.registry import Group, Registry, Reviewed, ReviewedSite, table_name
@@ -68,7 +70,7 @@ def current(
             match kind:
                 case Kind.VALUE:
                     if site.code is not None:
-                        reading = read_value(site.code, group.selector(label))
+                        reading = read_value(site.code, regex_of(site))
                         if isinstance(reading, Value):
                             value = reading.text
                             unit = unit_of(reading.text)
@@ -79,7 +81,8 @@ def current(
                 case _:
                     assert_never(kind)
             name = marker_text(key, label)
-            records.append(CurrentSite(site.where, ReviewedSite(name, unit, block), value))
+            site_record = ReviewedSite(name, unit, block, regex_of(site))
+            records.append(CurrentSite(site.where, site_record, value))
         if kind is Kind.JUDGED or kind is None:
             records += _judged_files(group, files)
         groups[key] = CurrentGroup(group.definition, tuple(records))
@@ -96,7 +99,7 @@ def _judged_files(group: Group, files: dict[str, FileRead]) -> list[CurrentSite]
                 reached = text if ref.pointer is None else json_at(text, ref.pointer)
                 block = fingerprint((reached or text).splitlines())
                 name = ref.unmarked().text()
-                records.append(CurrentSite(ref.text(), ReviewedSite(name, None, block), None))
+                records.append(CurrentSite(ref.text(), ReviewedSite(name, None, block, None), None))
             case Missing() | None:
                 pass  # Reported by check, unless it's optional.
             case _:
@@ -200,6 +203,15 @@ def _compare_sites(
                     f"or if the group holds in the new one, {update(key)}",
                 )
             )
+        if site.site.regex != old.regex:
+            problems.append(
+                Problem(
+                    site.where,
+                    f"Its regex has changed from {_regex(old.regex)} to "
+                    f"{_regex(site.site.regex)} since it was last reviewed. Check that it picks "
+                    f"out the value or members COUPLED:{key}: relates, then {update(key)}",
+                )
+            )
         if site.site.block != old.block:
             others = [where for where in wheres if where != site.where]
             problems.append(
@@ -221,6 +233,10 @@ def _now(group: CurrentGroup) -> str:
         site.where + ("" if site.value is None else f" `{site.value}`") for site in group.sites
     ]
     return f" (its sites now: {', '.join(sites)})" if sites else ""
+
+
+def _regex(regex: str | None) -> str:
+    return "none" if regex is None else f"/{regex}/"
 
 
 def _unit(unit: str | None) -> str:

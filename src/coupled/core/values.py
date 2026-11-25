@@ -112,13 +112,13 @@ def block_lines(
     return block
 
 
-def read_value(code: str, selector: str | None) -> Reading:
-    """The value in a line of code: what the selector matches (its capture group, if it has
+def read_value(code: str, regex: str | None) -> Reading:
+    """The value in a line of code: what the regex matches (its capture group, if it has
     one), or else the one quoted literal, image tag, assignment or directive value on it."""
-    if selector is not None:
-        match = re.search(selector, code)
+    if regex is not None:
+        match = re.search(regex, code)
         if match is None:
-            return Unreadable(f"the selector @/{selector}/ doesn't match `{code}`")
+            return Unreadable(f"the regex /{regex}/ doesn't match `{code}`")
         return Value(match.group(1) if match.re.groups else match.group())
     quoted = _QUOTED.findall(code)
     if len(quoted) == 1:
@@ -131,15 +131,15 @@ def read_value(code: str, selector: str | None) -> Reading:
     return Unreadable(f"`{code}` has no single value")
 
 
-def read_file_value(content: str, pointer: str | None, selector: str | None) -> Reading | None:
-    """The value in a file a group refers to: what the selector first matches in it (its
+def read_file_value(content: str, pointer: str | None, regex: str | None) -> Reading | None:
+    """The value in a file a group refers to: what the regex first matches in it (its
     capture group, if it has one), with `^` and `$` matching at each line; or at the JSON
     Pointer; or if there's neither, the whole file when it's one line. None when there's neither
     and the file is longer."""
-    if selector is not None:
-        match = re.search(selector, content, re.MULTILINE)
+    if regex is not None:
+        match = re.search(regex, content, re.MULTILINE)
         if match is None:
-            return Unreadable(f"the selector @/{selector}/ matches nothing in it")
+            return Unreadable(f"the regex /{regex}/ matches nothing in it")
         return Value(match.group(1) if match.re.groups else match.group())
     if pointer is None:
         lines = content.strip().splitlines()
@@ -156,32 +156,30 @@ def read_file_value(content: str, pointer: str | None, selector: str | None) -> 
     return Value(str(at.node))
 
 
-def read_members(block: tuple[str, ...], selector: str | None) -> Members | Unreadable:
-    """The names in the lines of a block: every match of the selector (its capture group, if it
-    has one), or with no selector, every quoted literal."""
+def read_members(block: tuple[str, ...], regex: str | None) -> Members | Unreadable:
+    """The names in the lines of a block: every match of the regex (its capture group, if it
+    has one), or with no regex, every quoted literal."""
     names: list[str] = []
     for line in block:
-        if selector is None:
+        if regex is None:
             names += ["".join(quoted) for quoted in _QUOTED.findall(line)]
         else:
             names += [
                 match.group(1) if match.re.groups else match.group()
-                for match in re.finditer(selector, line)
+                for match in re.finditer(regex, line)
             ]
     if names:
         return Members(tuple(dict.fromkeys(names)))
-    if selector is None:
+    if regex is None:
         return Unreadable("its lines hold no quoted values")
-    return Unreadable(f"the selector @/{selector}/ matches nothing in its lines")
+    return Unreadable(f"the regex /{regex}/ matches nothing in its lines")
 
 
-def read_file_members(
-    content: str, pointer: str | None, selector: str | None
-) -> Members | Unreadable:
-    """The names in a file a group refers to: every match of the selector in its lines; or at
+def read_file_members(content: str, pointer: str | None, regex: str | None) -> Members | Unreadable:
+    """The names in a file a group refers to: every match of the regex in its lines; or at
     the JSON Pointer, a list's items or an object's keys; or if there's neither, its lines."""
-    if selector is not None:
-        return read_members(tuple(content.splitlines()), selector)
+    if regex is not None:
+        return read_members(tuple(content.splitlines()), regex)
     if pointer is None:
         return Members(tuple(dict.fromkeys(text_of(content.splitlines()).lines)))
     try:

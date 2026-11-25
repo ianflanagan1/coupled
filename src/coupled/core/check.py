@@ -2,11 +2,11 @@
 the registry, that its relations name its sites, and that the relations of a group using value,
 set or text ops hold."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import assert_never, final
 
-from coupled.core.comments import syntax_of
-from coupled.core.markers import End, Found, Malformed, Marker, find_markers
+from coupled.core.comments import Syntax, open_block_closer, syntax_of
+from coupled.core.markers import End, Found, Malformed, Marker, Placed, find_markers
 from coupled.core.registry import (
     HAS_NO_FILE,
     HAS_NO_MARKER,
@@ -74,7 +74,7 @@ def file_sites(path: str, lines: list[str]) -> list[Site]:
     return [
         Site(
             f"{path}:{item.line + 1}",
-            item.found,
+            _with_closer_problem(item, lines[item.line], syntax),
             value_line(lines, item.line, syntax),
             tuple(block_lines(lines, item, placed, syntax)),
             item.close is not None,
@@ -82,6 +82,30 @@ def file_sites(path: str, lines: list[str]) -> list[Site]:
         )
         for item in placed
     ]
+
+
+def _with_closer_problem(item: Placed, line: str, syntax: Syntax) -> Found:
+    """The marker or END placed on line, with a problem if it's a marker in a block comment
+    whose regex holds the comment's closer, which ends the comment there."""
+    found = item.found
+    if not isinstance(found, Marker) or found.regex is None:
+        return found
+    closer = open_block_closer(line[: item.start], syntax)
+    if closer is None or closer not in f"/{found.regex}/":
+        return found
+    return replace(
+        found,
+        problems=(
+            *found.problems,
+            f"The regex holds `{closer}`, which closes the comment it's in. Write it so "
+            f"`{closer}` doesn't appear, even across its slashes, such as `\\s*` as `\\s{{0,}}`",
+        ),
+    )
+
+
+def regex_of(site: Site) -> str | None:
+    """The regex the marker at site carries, if it carries one."""
+    return site.found.regex if isinstance(site.found, Marker) else None
 
 
 @final
@@ -336,27 +360,27 @@ class _GroupCheck:
                     )
                 )
         elsewhere = "it's in another repository, which the lint doesn't read"
-        no_file = "it has no file for the lint to read"
-        unread = [
-            *((label, elsewhere) for label, _ in self._group.remote_files),
-            *((label, elsewhere) for label, _ in self._group.other_registries),
-            *((label, no_file) for label, _ in self._group.no_file_sites),
-        ]
+        unread = [(label, elsewhere) for label, _ in self._group.remote_files]
         for label, reason in sorted(unread):
-            if self._group.selector(label) is not None:
-                problems.append(Problem(self._where, f"Drop `{label}` from `select`: {reason}"))
-        for label, ref in self._group.local_files:
-            if ref.pointer is not None and self._group.selector(label) is not None:
+            if self._group.regex(label) is not None:
                 problems.append(
                     Problem(
                         self._where,
-                        f"Pick `{label}`'s value out with its #pointer or with `select`, not both",
+                        f"Drop the regex from `{label}` in `{HAS_NO_MARKER}`: {reason}",
+                    )
+                )
+        for label, ref in self._group.local_files:
+            if ref.pointer is not None and self._group.regex(label) is not None:
+                problems.append(
+                    Problem(
+                        self._where,
+                        f"Pick `{label}`'s value out with its #pointer or its regex, not both",
                     )
                 )
         known = set(first) | {label for label, _ in unmarked}
         named = [
             label for relation in self._group.relations for label in (relation.left, relation.right)
-        ] + [label for label, _ in self._group.selectors]
+        ]
         for label in dict.fromkeys(named):
             if label not in known:
                 problems.append(
@@ -405,8 +429,10 @@ class _GroupCheck:
             )
         if any(r.formula is not None and not isinstance(r.op, ValueOp) for r in relations):
             problems.append(f"Use a formula only with {' '.join(ValueOp)}")
-        if self._group.selectors and kinds and not {Kind.VALUE, Kind.SET}.intersection(kinds):
-            problems.append(f"Use `select` only with {' '.join([*ValueOp, *SetOp])}")
+        reads = f"{' '.join([*ValueOp, *SetOp])}, which read values and members"
+        regexes_unused = bool(kinds) and not {Kind.VALUE, Kind.SET}.intersection(kinds)
+        if self._group.regexes and regexes_unused:
+            problems.append(f"Use a regex in `{HAS_NO_MARKER}` only with {reads}")
         if kinds == [Kind.JUDGED] and not (self._group.why or "").strip():
             problems.append(
                 f'Say why these sites are coupled, as `why = "..."`: the lint can\'t compare '
@@ -426,6 +452,12 @@ class _GroupCheck:
                 )
             pairs.append(frozenset((relation.left, relation.right)))
         result = [Problem(self._where, message) for message in problems]
+        if regexes_unused:
+            result += [
+                Problem(site.where, f"Drop this marker's regex: use a regex only with {reads}")
+                for site, _ in self._sites
+                if regex_of(site) is not None
+            ]
         marked = [label for _, label in self._sites]
         unmarked = [label for label, _ in self._group.unmarked_labels()]
         members = set(marked) | set(unmarked)
@@ -479,7 +511,7 @@ class _GroupCheck:
             if site.code is None:
                 reading: Value | Unreadable = Unreadable(_NO_LINE)
             else:
-                reading = read_value(site.code, self._group.selector(label))
+                reading = read_value(site.code, regex_of(site))
             match reading:
                 case Value():
                     readings[label] = (site.where, reading)
@@ -487,17 +519,19 @@ class _GroupCheck:
                     problems.append(
                         Problem(
                             site.where,
-                            f"Can't read this site's value: {reason}. Pick it out with "
-                            f"`select = {{ {label} = '<regex>' }}`, or if the group's sites "
-                            "aren't single values, relate them with a set, text or judged op",
+                            f"Can't read this site's value: {reason}. Pick it out with a "
+                            f"regex after the marker's label, `COUPLED:{self._key}: {label} "
+                            "/<regex>/`, or if the group's sites aren't single values, relate "
+                            "them with a set, text or judged op",
                         )
                     )
                 case _:
                     assert_never(reading)
         for label, ref, text in self._local_files():
-            reading = read_file_value(text, ref.pointer, self._group.selector(label)) or Unreadable(
+            reading = read_file_value(text, ref.pointer, self._group.regex(label)) or Unreadable(
                 "it has more than one line: point at its value with #<pointer> if it's JSON, "
-                f"or pick it out with `select = {{ {label} = '<regex>' }}`"
+                f'or pick it out with a regex, `{label} = {{ file = "{ref.text()}", '
+                "regex = '<regex>' }`"
             )
             match reading:
                 case Value():
@@ -521,7 +555,7 @@ class _GroupCheck:
             if not site.block:
                 reading: Members | Unreadable = Unreadable(_NO_LINE)
             else:
-                reading = read_members(site.block, self._group.selector(label))
+                reading = read_members(site.block, regex_of(site))
             match reading:
                 case Members():
                     readings[label] = (site.where, reading)
@@ -529,15 +563,16 @@ class _GroupCheck:
                     problems.append(
                         Problem(
                             site.where,
-                            f"Can't read this site's members: {reason}. Pick each out with "
-                            f"`select = {{ {label} = '<regex>' }}`, or if they can't be picked "
-                            "out, relate the group's sites with a judged op",
+                            f"Can't read this site's members: {reason}. Pick each out with a "
+                            f"regex after the marker's label, `COUPLED:{self._key}: {label} "
+                            "/<regex>/`, or if they can't be picked out, relate the group's "
+                            "sites with a judged op",
                         )
                     )
                 case _:
                     assert_never(reading)
         for label, ref, text in self._local_files():
-            reading = read_file_members(text, ref.pointer, self._group.selector(label))
+            reading = read_file_members(text, ref.pointer, self._group.regex(label))
             match reading:
                 case Members():
                     readings[label] = (ref.text(), reading)

@@ -28,8 +28,8 @@ TEXT = """version = 1
 
 ["COUPLED:upload-limit:"]
 relations = ["proxy >= app", "proxy = limits * 1024", "app = env"]
-has-no-marker = { limits = "./limits.json#/upload_mb", env = "./.env?" }
-select = { app = 'MAX = (\\d+)' }
+has-no-marker.limits = "./limits.json#/upload_mb"
+has-no-marker.env = { file = "./.env?", regex = 'MAX=(\\d+)' }
 """
 
 
@@ -92,7 +92,7 @@ def test_a_relation_names_a_file_by_its_label_not_its_path() -> None:
     assert "A file that can't hold a marker gets a label in `has-no-marker`" in problem
 
 
-def test_a_group_s_table_gives_its_relations_labelled_files_and_selectors() -> None:
+def test_a_group_s_table_gives_its_relations_labelled_files_and_their_regexes() -> None:
     group = registry(TEXT).groups["upload-limit"]
     assert group.problems == ()
     assert group.relations[0] == Relation("proxy", ValueOp.GE, "app", None)
@@ -100,13 +100,65 @@ def test_a_group_s_table_gives_its_relations_labelled_files_and_selectors() -> N
         ("env", FileRef(None, ".env", True, None)),
         ("limits", FileRef(None, "limits.json", False, "/upload_mb")),
     )
-    assert group.selector("app") == "MAX = (\\d+)"
+    assert group.regex("env") == "MAX=(\\d+)"
+    assert group.regex("limits") is None
+
+
+def test_a_file_s_regex_is_part_of_its_group_s_definition() -> None:
+    plain = registry(TEXT.replace("MAX=", "LIMIT=")).groups["upload-limit"]
+    assert plain.definition != registry(TEXT).groups["upload-limit"].definition
+
+
+def test_a_file_s_table_may_leave_out_its_regex() -> None:
+    group = registry(
+        'version = 1\n["COUPLED:o:"]\nrelations = ["a = env"]\n'
+        'has-no-marker = { env = { file = "./.env" } }\n'
+    ).groups["o"]
+    assert group.problems == ()
+    assert group.local_files == (("env", FileRef(None, ".env", False, None)),)
+    assert group.regex("env") is None
+
+
+def test_a_file_s_table_gives_the_same_definition_as_its_string() -> None:
+    table = 'version = 1\n["COUPLED:o:"]\nrelations = ["a = env"]\nhas-no-marker = { env = %s }\n'
+    as_string = registry(table % '"./.env"').groups["o"].definition
+    assert registry(table % '{ file = "./.env" }').groups["o"].definition == as_string
+
+
+def test_a_file_s_table_must_give_its_file_and_only_file_and_regex() -> None:
+    assert any(
+        "Give `env` in `has-no-marker` its file" in problem
+        for problem in group_of(
+            'relations = ["a = env"]\nhas-no-marker = { env = { regex = "x" } }'
+        )
+    )
+    assert any(
+        "Drop `pattern`" in problem
+        for problem in group_of(
+            'relations = ["a = env"]\n'
+            "has-no-marker = { env = { file = './.env', regex = 'x', pattern = 'y' } }"
+        )
+    )
+
+
+def test_a_file_s_regex_that_does_not_compile_is_reported() -> None:
+    assert any(
+        "Fix the regex /(x/ for `env`" in problem
+        for problem in group_of(
+            'relations = ["a = env"]\nhas-no-marker = { env = { file = "./.env", regex = "(x" } }'
+        )
+    )
+
+
+def test_a_select_table_asks_for_each_regex_to_move_to_its_site() -> None:
+    [problem] = group_of('relations = ["a = b"]\nselect = { a = "x" }')
+    assert "after its marker's label" in problem and "regex = '<regex>'" in problem
 
 
 def test_a_file_in_another_repository_that_keeps_no_group_is_given_a_label() -> None:
     group = registry(
-        'version = 1\n["COUPLED:o:"]\nrelations = ["writer same-shape schema"]\nwhy = "x"\n'
-        'has-no-marker = { schema = "//github.com/o/n/schema.json#/defs" }\n'
+        'version = 1\n["COUPLED:o:"]\nrelations = ["writer same-shape schema"]\n'
+        'has-no-marker = { schema = "//github.com/o/n/schema.json#/defs" }\nwhy = "x"\n'
     ).groups["o"]
     assert group.problems == ()
     assert group.local_files == ()
@@ -117,8 +169,8 @@ def test_a_file_in_another_repository_that_keeps_no_group_is_given_a_label() -> 
 
 def test_a_site_of_another_repository_that_keeps_the_group_is_named_by_its_repository() -> None:
     group = registry(
-        'version = 1\n["COUPLED:o:"]\nrelations = ["writer same-shape schema"]\nwhy = "x"\n'
-        'in-another-registry = { schema = "//github.com/o/n" }\n'
+        'version = 1\n["COUPLED:o:"]\nrelations = ["writer same-shape schema"]\n'
+        'in-another-registry = { schema = "//github.com/o/n" }\nwhy = "x"\n'
     ).groups["o"]
     assert group.problems == ()
     assert group.other_registries == (("schema", "github.com/o/n"),)
@@ -136,7 +188,9 @@ def test_a_group_s_table_names_where_each_site_with_no_file_is_set() -> None:
 def test_a_labelled_site_written_in_the_wrong_form_is_reported() -> None:
     assert group_of('relations = ["a = b"]\nhas-no-marker = { b = "f" }') == (
         'Write `b` in `has-no-marker` as `b = "./<path>[?][#<pointer>]"`, or for a file '
-        'in another repository, `b = "//<git-host>/<owner>/<name>/<path>[#<pointer>]"`',
+        'in another repository, `b = "//<git-host>/<owner>/<name>/<path>[#<pointer>]"`, or '
+        "with a regex picking its value out, as "
+        "`b = { file = \"./<path>[?]\", regex = '<regex>' }`",
     )
     assert group_of('relations = ["a = b"]\nin-another-registry = { b = "./f" }') == (
         'Write `b` in `in-another-registry` as `b = "//<git-host>/<owner>/<name>"`',
@@ -172,6 +226,39 @@ def test_a_group_with_no_relations_or_an_unknown_field_is_reported() -> None:
     assert any("relations" in problem for problem in problems)
     assert any("Drop `files`" in problem for problem in problems)
     assert any("Drop `note`" in problem for problem in problems)
+
+
+def test_a_group_s_fields_in_their_order_are_not_reported() -> None:
+    assert (
+        group_of(
+            'relations = ["a = b", "a = c", "a = d"]\n'
+            'has-no-marker = { b = "./b.json" }\n'
+            'in-another-registry = { c = "//github.com/o/r" }\n'
+            'has-no-file = { d = "a console" }\n'
+            'why = "y"'
+        )
+        == ()
+    )
+
+
+def test_a_group_s_fields_out_of_their_order_are_reported_at_the_first_out_of_place() -> None:
+    problems = group_of('why = "y"\nhas-no-file = { d = "a console" }\nrelations = ["a = d"]')
+    assert problems == (
+        "Put `relations` before `why`: a group's table gives relations, has-no-marker, "
+        "in-another-registry, has-no-file and why, in that order",
+    )
+
+
+def test_a_dotted_field_takes_its_place_from_its_first_line() -> None:
+    assert (
+        group_of(
+            'relations = ["a = b", "a = c"]\n'
+            'has-no-marker.b = "./b.json"\n'
+            'has-no-marker.c = "./c.json"\n'
+            'why = "y"'
+        )
+        == ()
+    )
 
 
 def test_a_group_s_table_can_say_why_its_sites_are_coupled() -> None:
@@ -218,8 +305,8 @@ def test_the_reviewed_section_is_written_below_the_groups_and_read_back() -> Non
         "upload-limit": Reviewed(
             "abc",
             (
-                ReviewedSite("COUPLED:upload-limit: proxy", "m", None),
-                ReviewedSite("COUPLED:upload-limit: app", None, None),
+                ReviewedSite("COUPLED:upload-limit: proxy", "m", None, None),
+                ReviewedSite("COUPLED:upload-limit: app", None, None, None),
             ),
         )
     }
@@ -231,8 +318,8 @@ def test_the_reviewed_section_is_written_below_the_groups_and_read_back() -> Non
         "upload-limit": Reviewed(
             "abc",
             (
-                ReviewedSite("COUPLED:upload-limit: app", None, None),
-                ReviewedSite("COUPLED:upload-limit: proxy", "m", None),
+                ReviewedSite("COUPLED:upload-limit: app", None, None, None),
+                ReviewedSite("COUPLED:upload-limit: proxy", "m", None, None),
             ),
         )
     }
@@ -254,7 +341,7 @@ def test_a_group_s_entry_is_its_table_as_written() -> None:
     entry = entry_text(text, "upload-limit")
     assert entry is not None
     assert entry.startswith('["COUPLED:upload-limit:"]')
-    assert entry.endswith("select = { app = 'MAX = (\\d+)' }")
+    assert entry.endswith("regex = 'MAX=(\\d+)' }")
     assert entry_text(text, "other") is None
 
 
