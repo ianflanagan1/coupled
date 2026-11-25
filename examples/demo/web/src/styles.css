@@ -7,3 +7,9 @@
     display: block;
   }
 }
+
+@media (min-width: 641px) { /* COUPLED:breakpoint: desktop */
+  .upload {
+    gap: 1rem;
+  }
+}

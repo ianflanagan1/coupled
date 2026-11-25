@@ -121,8 +121,11 @@ def test_problems_are_counted_in_the_status_line_before_them(sandbox: Sandbox) -
 def test_a_marker_on_a_comment_line_is_checked_against_the_line_below(sandbox: Sandbox) -> None:
     sandbox.file("Dockerfile", "# COUPLED:node-version: docker", "FROM node:24.1-slim")
     sandbox.file("compose.yaml", "image: node:22.3-alpine  # COUPLED:node-version: compose")
-    sandbox.registry('["COUPLED:node-version:"]', 'relations = ["="]')
-    assert_problem(sandbox.lint(), "compose.yaml:1 `=` doesn't hold with Dockerfile:1: 22.3 = 24.1")
+    sandbox.registry('["COUPLED:node-version:"]', 'relations = ["compose = docker"]')
+    assert_problem(
+        sandbox.lint(),
+        "compose.yaml:1 `compose = docker` doesn't hold with Dockerfile:1: 22.3 = 24.1",
+    )
 
 
 def test_a_search_for_the_key_finds_the_group_s_table_beside_its_sites(sandbox: Sandbox) -> None:
@@ -244,7 +247,9 @@ def test_a_pointer_into_json_is_checked(sandbox: Sandbox) -> None:
     sandbox.file("nginx.conf", "client_max_body_size 10m;  # COUPLED:upload-limit: proxy")
     sandbox.file("limits.json", '{"upload_mb": 12}')
     sandbox.registry(
-        '["COUPLED:upload-limit:"]', 'relations = ["proxy >= ./limits.json#/upload_mb"]'
+        '["COUPLED:upload-limit:"]',
+        'relations = ["proxy >= limits"]',
+        'has-no-marker = { limits = "./limits.json#/upload_mb" }',
     )
     assert_problem(sandbox.lint(), "doesn't hold with ./limits.json#/upload_mb: 10m >= 12")
 
@@ -252,13 +257,21 @@ def test_a_pointer_into_json_is_checked(sandbox: Sandbox) -> None:
 def test_a_group_of_two_files_that_cannot_hold_markers_is_checked(sandbox: Sandbox) -> None:
     sandbox.file(".nvmrc", "24")
     sandbox.file(".tool-version", "22")
-    sandbox.registry('["COUPLED:node-version:"]', 'relations = ["./.nvmrc = ./.tool-version"]')
-    assert_problem(sandbox.lint(), "./.nvmrc `./.nvmrc = ./.tool-version` doesn't hold")
+    sandbox.registry(
+        '["COUPLED:node-version:"]',
+        'relations = ["nvmrc = tools"]',
+        'has-no-marker = { nvmrc = "./.nvmrc", tools = "./.tool-version" }',
+    )
+    assert_problem(sandbox.lint(), "./.nvmrc `nvmrc = tools` doesn't hold")
 
 
 def test_a_missing_file_is_reported_unless_it_is_optional(sandbox: Sandbox) -> None:
     sandbox.file("a.py", "X = 1  # COUPLED:x: a")
-    sandbox.registry('["COUPLED:x:"]', 'relations = ["="]', 'files = ["./.nvmrc", "./.env?"]')
+    sandbox.registry(
+        '["COUPLED:x:"]',
+        'relations = ["a = nvmrc", "a = env"]',
+        'has-no-marker = { nvmrc = "./.nvmrc", env = "./.env?" }',
+    )
     ran = sandbox.lint()
     assert_problem(ran, "./.nvmrc COUPLED:x: names this file, but it isn't there")
     assert "./.env" not in ran.errors
@@ -268,7 +281,8 @@ def test_other_repositories_are_named_as_not_checked(sandbox: Sandbox) -> None:
     sandbox.file("a.go", "type listing struct {  // COUPLED:listing-shape: writer")
     sandbox.registry(
         '["COUPLED:listing-shape:"]',
-        'relations = ["writer same-shape //github.com/me/rulebook/schema/coverage.json"]',
+        'relations = ["writer same-shape schema"]',
+        'in-another-registry = { schema = "//github.com/me/rulebook" }',
         'why = "the rulebook reads the listing this writes"',
     )
     sandbox.review("listing-shape")
@@ -386,7 +400,7 @@ def vat_group(sandbox: Sandbox, op: str) -> None:
     """Writes a registry relating the copies by op."""
     sandbox.registry(
         '["COUPLED:vat:"]',
-        f'relations = ["{op}"]',
+        f'relations = ["invoice {op} cart"]',
         'why = "an invoice and a cart must charge the same VAT"',
     )
 
@@ -403,7 +417,7 @@ def test_an_edited_block_of_a_judged_group_fails_until_it_is_reviewed(sandbox: S
 
 def test_a_judged_group_that_does_not_say_why_is_reported(sandbox: Sandbox) -> None:
     vat(sandbox, 5, 5)
-    sandbox.registry('["COUPLED:vat:"]', 'relations = ["same-as"]')
+    sandbox.registry('["COUPLED:vat:"]', 'relations = ["invoice same-as cart"]')
     assert_problem(sandbox.lint(), '["COUPLED:vat:"] Say why these sites are coupled')
 
 
@@ -423,7 +437,8 @@ def test_a_block_of_a_text_group_changed_alone_is_reported(sandbox: Sandbox) -> 
     vat(sandbox, 5, 6)
     assert_problem(
         sandbox.lint(),
-        "b.py:1 `same-text` doesn't hold with a.py:1: `return n / 6` here is `return n / 5` there",
+        "a.py:1 `invoice same-text cart` doesn't hold with b.py:1: `return n / 5` here is "
+        "`return n / 6` there",
     )
 
 
@@ -481,7 +496,7 @@ def test_the_demo_project_reports_text_changed_at_one_site(sandbox: Sandbox) -> 
     shutil.copytree(DEMO, sandbox.repo, dirs_exist_ok=True)
     release = sandbox.repo / ".github" / "workflows" / "release.yml"
     release.write_text(release.read_text().replace("checkout@v4", "checkout@v5"))
-    assert_problem(sandbox.lint(), "`same-text` doesn't hold with .github/workflows/")
+    assert_problem(sandbox.lint(), "`ci same-text release` doesn't hold with .github/workflows/")
 
 
 def test_help_describes_the_options(sandbox: Sandbox) -> None:
@@ -496,7 +511,7 @@ def test_update_records_only_the_groups_it_names(sandbox: Sandbox) -> None:
     upload(sandbox, 8)
     sandbox.file("a.py", "X = 1  # COUPLED:x-limit: a")
     sandbox.file("b.py", "X = 1  # COUPLED:x-limit: b")
-    sandbox.registry(*UPLOAD, '["COUPLED:x-limit:"]', 'relations = ["="]')
+    sandbox.registry(*UPLOAD, '["COUPLED:x-limit:"]', 'relations = ["a = b"]')
     ran = sandbox.review("upload-limit")
     assert_problem(ran, "COUPLED:x-limit: hasn't been reviewed")
     assert "upload-limit: hasn't" not in ran.errors

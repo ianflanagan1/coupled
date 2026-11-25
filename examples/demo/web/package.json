@@ -1,6 +1,9 @@
 {
   "name": "upload-web",
   "private": true,
+  "scripts": {
+    "dev": "vite --port 5173 --api http://localhost:8080"
+  },
   "engines": {
     "python-backend": "3.13"
   }

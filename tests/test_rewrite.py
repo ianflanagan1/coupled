@@ -33,16 +33,12 @@ def test_with_neither_relations_nor_pointer_there_is_no_message() -> None:
 
 def test_a_site_s_relations_are_each_seen_from_it() -> None:
     group = registry(
-        '["COUPLED:t:"]\nrelations = ["proxy >= app + 5", "proxy = ./limits.json#/t"]\n'
+        '["COUPLED:t:"]\nrelations = ["proxy >= app + 5", "proxy = limits"]\n'
+        'has-no-marker = { limits = "./limits.json#/t" }\n'
     ).groups["t"]
-    assert relations_of(group, "proxy") == ">= app + 5, = ./limits.json#/t"
+    assert relations_of(group, "proxy") == ">= app + 5, = limits"
     assert relations_of(group, "app") == "<= proxy - 5"
     assert relations_of(group, "other") is None
-
-
-def test_a_bare_op_is_seen_as_the_same_as_every_other_site() -> None:
-    group = registry('["COUPLED:v:"]\nrelations = ["="]\n').groups["v"]
-    assert relations_of(group, "ci") == "= every other site and file"
 
 
 def test_an_op_with_a_direction_flips_from_the_other_side() -> None:

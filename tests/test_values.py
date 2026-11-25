@@ -135,35 +135,44 @@ class ReadingValues(unittest.TestCase):
 
 
 class FileValues(unittest.TestCase):
+    def test_a_selector_picks_a_value_out_of_a_file_matching_at_each_line(self) -> None:
+        content = "NAME=x\nUPLOAD_MB=8\n"
+        self.assertEqual(Value("8"), read_file_value(content, None, r"^UPLOAD_MB=(\d+)$"))
+
+    def test_a_selector_that_matches_nothing_in_a_file_is_unreadable(self) -> None:
+        self.assertIsInstance(read_file_value("NAME=x\n", None, r"^UPLOAD_MB=(\d+)"), Unreadable)
+
     def test_a_one_line_file_is_its_value(self) -> None:
-        self.assertEqual(Value("24"), read_file_value("24\n", None))
+        self.assertEqual(Value("24"), read_file_value("24\n", None, None))
 
     def test_a_longer_file_without_a_pointer_has_no_value(self) -> None:
-        self.assertIsNone(read_file_value("{\n}\n", None))
+        self.assertIsNone(read_file_value("{\n}\n", None, None))
 
     def test_a_pointer_reads_a_value_in_json(self) -> None:
         content = '{"engines": {"node": ">=24"}, "list": [1, 2.5], "a/b": {"~c": "d"}}'
-        self.assertEqual(Value(">=24"), read_file_value(content, "/engines/node"))
-        self.assertEqual(Value("2.5"), read_file_value(content, "/list/1"))
-        self.assertEqual(Value("d"), read_file_value(content, "/a~1b/~0c"))
+        self.assertEqual(Value(">=24"), read_file_value(content, "/engines/node", None))
+        self.assertEqual(Value("2.5"), read_file_value(content, "/list/1", None))
+        self.assertEqual(Value("d"), read_file_value(content, "/a~1b/~0c", None))
 
     def test_a_pointer_to_nothing_or_to_an_object_is_unreadable(self) -> None:
-        self.assertIsInstance(read_file_value('{"a": 1}', "/b"), Unreadable)
-        self.assertIsInstance(read_file_value('{"a": {}}', "/a"), Unreadable)
-        self.assertIsInstance(read_file_value('{"a": true}', "/a"), Unreadable)
+        self.assertIsInstance(read_file_value('{"a": 1}', "/b", None), Unreadable)
+        self.assertIsInstance(read_file_value('{"a": {}}', "/a", None), Unreadable)
+        self.assertIsInstance(read_file_value('{"a": true}', "/a", None), Unreadable)
 
     def test_a_pointer_reaches_through_a_list_by_index(self) -> None:
         content = '{"runtimes": [{"name": "node"}, {"name": "python", "version": "3.13"}]}'
-        self.assertEqual(Value("node"), read_file_value(content, "/runtimes/0/name"))
-        self.assertEqual(Value("3.13"), read_file_value(content, "/runtimes/1/version"))
+        self.assertEqual(Value("node"), read_file_value(content, "/runtimes/0/name", None))
+        self.assertEqual(Value("3.13"), read_file_value(content, "/runtimes/1/version", None))
 
     def test_a_list_index_that_is_not_plain_decimal_digits_reaches_nothing(self) -> None:
         content = '{"list": ["a", "b", "c"]}'
         for index in ("3", "-", "-1", "01", "00", "+1", " 1", "1 ", "1.0", "²", "١", ""):
-            self.assertIsInstance(read_file_value(content, f"/list/{index}"), Unreadable, index)
+            self.assertIsInstance(
+                read_file_value(content, f"/list/{index}", None), Unreadable, index
+            )
 
     def test_a_pointer_into_a_file_that_is_not_json_is_unreadable(self) -> None:
-        self.assertIsInstance(read_file_value("a = 1", "/a"), Unreadable)
+        self.assertIsInstance(read_file_value("a = 1", "/a", None), Unreadable)
 
 
 class Comparing(unittest.TestCase):
@@ -239,17 +248,23 @@ class ReadingMembers(unittest.TestCase):
 
 
 class FileMembers(unittest.TestCase):
+    def test_a_selector_picks_each_member_out_of_a_file_s_lines(self) -> None:
+        content = "- pending\n- stored\nother\n"
+        self.assertEqual(
+            Members(("pending", "stored")), read_file_members(content, None, r"^- (\w+)")
+        )
+
     def test_a_file_s_members_are_its_lines(self) -> None:
-        self.assertEqual(Members(("en", "fr")), read_file_members("en\n\n  fr\n", None))
+        self.assertEqual(Members(("en", "fr")), read_file_members("en\n\n  fr\n", None, None))
 
     def test_a_pointer_to_a_list_reads_its_items(self) -> None:
         content = '{"locales": ["en", "fr"], "ports": [80, 443]}'
-        self.assertEqual(Members(("en", "fr")), read_file_members(content, "/locales"))
-        self.assertEqual(Members(("80", "443")), read_file_members(content, "/ports"))
+        self.assertEqual(Members(("en", "fr")), read_file_members(content, "/locales", None))
+        self.assertEqual(Members(("80", "443")), read_file_members(content, "/ports", None))
 
     def test_a_pointer_to_an_object_reads_its_keys(self) -> None:
         content = '{"scripts": {"build": "tsc", "test": "vitest"}}'
-        self.assertEqual(Members(("build", "test")), read_file_members(content, "/scripts"))
+        self.assertEqual(Members(("build", "test")), read_file_members(content, "/scripts", None))
 
     def test_a_pointer_to_one_value_to_nothing_or_into_a_list_of_objects_is_unreadable(
         self,
@@ -260,11 +275,11 @@ class FileMembers(unittest.TestCase):
             ('{"a": [{"b": 1}]}', "/a"),
             ("a: [1]", "/a"),
         ):
-            self.assertIsInstance(read_file_members(content, pointer), Unreadable, content)
+            self.assertIsInstance(read_file_members(content, pointer, None), Unreadable, content)
 
     def test_an_empty_file_or_list_has_no_members(self) -> None:
-        self.assertEqual(Members(()), read_file_members("\n", None))
-        self.assertEqual(Members(()), read_file_members('{"a": []}', "/a"))
+        self.assertEqual(Members(()), read_file_members("\n", None, None))
+        self.assertEqual(Members(()), read_file_members('{"a": []}', "/a", None))
 
 
 class ComparingMembers(unittest.TestCase):

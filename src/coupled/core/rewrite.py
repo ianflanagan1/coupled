@@ -24,16 +24,12 @@ from coupled.core.registry import Group, Registry, Unparseable
 from coupled.core.relations import (
     OPS,
     Arith,
-    Bare,
-    Equation,
     Formula,
     JudgedOp,
-    Label,
     Op,
     SetOp,
     TextOp,
     ValueOp,
-    ref_text,
 )
 from coupled.core.settings import MarkerMessage
 
@@ -85,19 +81,13 @@ def relations_of(group: Group, label: str) -> str | None:
     """The relations of the site labelled label, each as seen from it (`>= app`), or None if
     no relation names it."""
     parts: list[str] = []
-    site = Label(label)
     for relation in group.relations:
-        match relation:
-            case Equation(left=left, op=op, right=right, formula=formula):
-                if left == site:
-                    parts.append(f"{op} {ref_text(right)}{_formula_text(formula)}")
-                elif right == site:
-                    inverse = _inverse(formula)
-                    parts.append(f"{_flipped(op)} {ref_text(left)}{_formula_text(inverse)}")
-            case Bare(op=op):
-                parts.append(f"{op} every other site and file")
-            case _:
-                assert_never(relation)
+        op, formula = relation.op, relation.formula
+        if relation.left == label:
+            parts.append(f"{op} {relation.right}{_formula_text(formula)}")
+        elif relation.right == label:
+            inverse = _inverse(formula)
+            parts.append(f"{_flipped(op)} {relation.left}{_formula_text(inverse)}")
     return ", ".join(parts) if parts else None
 
 

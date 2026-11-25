@@ -1,29 +1,31 @@
 """Checking a repository's COUPLED groups: each marker's form, that every group has a table in
-the registry, that its relations name its sites and files, and that the relations of a group
-using value, set or text ops hold."""
+the registry, that its relations name its sites, and that the relations of a group using value,
+set or text ops hold."""
 
 from dataclasses import dataclass
 from typing import assert_never, final
 
 from coupled.core.comments import syntax_of
 from coupled.core.markers import End, Found, Malformed, Marker, find_markers
-from coupled.core.registry import Group, Registry, Unparseable, table_name
+from coupled.core.registry import (
+    HAS_NO_FILE,
+    HAS_NO_MARKER,
+    IN_ANOTHER_REGISTRY,
+    FileRef,
+    Group,
+    Registry,
+    Unparseable,
+    table_name,
+)
 from coupled.core.relations import (
     Arith,
-    Bare,
-    Equation,
-    FileRef,
     Formula,
     Kind,
-    Label,
     Op,
-    Ref,
     SetOp,
     TextOp,
     ValueOp,
     kind_of,
-    ref_text,
-    refs,
 )
 from coupled.core.rewrite import Wanted, wanted, written_after
 from coupled.core.settings import MarkerMessage
@@ -118,25 +120,22 @@ def labelled(sites: list[Site], key: str) -> list[tuple[Site, str]]:
 def file_paths(registry: Registry) -> list[str]:
     """The distinct paths in this repository that the registry's groups refer to, in order:
     the files check needs read."""
-    paths = [
-        ref.path
-        for group in registry.groups.values()
-        for ref in group.file_refs()
-        if ref.repo is None
-    ]
+    paths = [ref.path for group in registry.groups.values() for _, ref in group.local_files]
     return list(dict.fromkeys(paths))
 
 
 def unchecked(registry: Registry | Unparseable | None) -> list[str]:
-    """The distinct repositories the groups refer to files in, in order, which the lint doesn't
-    read."""
+    """The distinct other repositories the groups name, for a file or a site there, in order,
+    which the lint doesn't read."""
     if not isinstance(registry, Registry):
         return []
     repos = [
-        ref.repo
+        repo
         for group in registry.groups.values()
-        for ref in group.file_refs()
-        if ref.repo is not None
+        for repo in [
+            *(ref.repo for _, ref in group.remote_files if ref.repo is not None),
+            *(repo for _, repo in group.other_registries),
+        ]
     ]
     return list(dict.fromkeys(repos))
 
@@ -326,52 +325,61 @@ class _GroupCheck:
                 )
             else:
                 first[label] = site.where
-        named = [
-            ref.text
-            for relation in self._group.relations
-            for ref in refs(relation)
-            if isinstance(ref, Label)
-        ] + [label for label, _ in self._group.selectors]
-        no_file = [label for label, _ in self._group.no_file_sites]
-        for label in no_file:
+        unmarked = self._group.unmarked_labels()
+        for label, field in unmarked:
             if label in first:
                 problems.append(
                     Problem(
                         self._where,
-                        f"Drop `{label}` from `has-no-file`: {first[label]} marks it, so that's "
-                        "its site",
+                        f"Drop `{label}` from `{field}`: {first[label]} marks it, so that's its "
+                        "site",
                     )
                 )
-            elif self._group.selector(label) is not None:
+        elsewhere = "it's in another repository, which the lint doesn't read"
+        no_file = "it has no file for the lint to read"
+        unread = [
+            *((label, elsewhere) for label, _ in self._group.remote_files),
+            *((label, elsewhere) for label, _ in self._group.other_registries),
+            *((label, no_file) for label, _ in self._group.no_file_sites),
+        ]
+        for label, reason in sorted(unread):
+            if self._group.selector(label) is not None:
+                problems.append(Problem(self._where, f"Drop `{label}` from `select`: {reason}"))
+        for label, ref in self._group.local_files:
+            if ref.pointer is not None and self._group.selector(label) is not None:
                 problems.append(
                     Problem(
                         self._where,
-                        f"Drop `{label}` from `select`: it has no file for the lint to read",
+                        f"Pick `{label}`'s value out with its #pointer or with `select`, not both",
                     )
                 )
-        reported: list[str] = [*no_file]
-        for label in named:
-            if label not in first and label not in reported:
-                reported.append(label)
+        known = set(first) | {label for label, _ in unmarked}
+        named = [
+            label for relation in self._group.relations for label in (relation.left, relation.right)
+        ] + [label for label, _ in self._group.selectors]
+        for label in dict.fromkeys(named):
+            if label not in known:
                 problems.append(
                     Problem(
                         self._where,
                         f"No site is labelled `{label}`. Mark it `COUPLED:{self._key}: "
-                        f"{label}`, or fix the label here",
+                        f"{label}`, or if it can't hold a marker, give it the label in "
+                        f"`{HAS_NO_MARKER}` or `{HAS_NO_FILE}`, or if it's a site in "
+                        f"another repository that keeps this group, in `{IN_ANOTHER_REGISTRY}`; or "
+                        "fix the label here",
                     )
                 )
         return problems
 
     def _files_problems(self) -> list[Problem]:
         problems: list[Problem] = []
-        for ref in self._group.file_refs():
-            if ref.repo is not None:
-                continue
+        for label, ref in self._group.local_files:
             if ref.path in self._marker_paths:
                 problems.append(
                     Problem(
                         self._where,
-                        f"Name the site in `./{ref.path}` by its marker's label, not as a file",
+                        f"`./{ref.path}` holds a marker of COUPLED:{self._key}:, so it can hold "
+                        f"one: mark `{label}` there and drop it from `{HAS_NO_MARKER}`",
                     )
                 )
             elif not ref.optional and isinstance(self._files.get(ref.path), Missing):
@@ -395,11 +403,7 @@ class _GroupCheck:
             problems.append(
                 f"Use ops of one kind in a group, not {ops[0]} and {other}: split it into two keys"
             )
-        bare = [relation for relation in relations if isinstance(relation, Bare)]
-        if bare and len(relations) > 1:
-            problems.append(f"Write a bare {bare[0].op} as the group's only relation")
-        equations = [relation for relation in relations if isinstance(relation, Equation)]
-        if any(eq.formula is not None and not isinstance(eq.op, ValueOp) for eq in equations):
+        if any(r.formula is not None and not isinstance(r.op, ValueOp) for r in relations):
             problems.append(f"Use a formula only with {' '.join(ValueOp)}")
         if self._group.selectors and kinds and not {Kind.VALUE, Kind.SET}.intersection(kinds):
             problems.append(f"Use `select` only with {' '.join([*ValueOp, *SetOp])}")
@@ -408,42 +412,34 @@ class _GroupCheck:
                 f'Say why these sites are coupled, as `why = "..."`: the lint can\'t compare '
                 f"what {ops[0]} relates, so `why` is all that tells a reviewer what must hold"
             )
-        pairs: list[frozenset[Ref]] = []
-        for equation in equations:
-            if equation.formula is not None and (
-                equation.formula.arith in (Arith.MUL, Arith.DIV) and equation.formula.operand == 0
+        pairs: list[frozenset[str]] = []
+        for relation in relations:
+            if relation.formula is not None and (
+                relation.formula.arith in (Arith.MUL, Arith.DIV) and relation.formula.operand == 0
             ):
-                problems.append(f"Multiply or divide by a number other than 0: `{equation.text()}`")
-            left, right = _plain(equation.left), _plain(equation.right)
-            if left == right:
+                problems.append(f"Multiply or divide by a number other than 0: `{relation.text()}`")
+            if relation.left == relation.right:
+                problems.append(f"Relate `{relation.left}` to another site in `{relation.text()}`")
+            elif frozenset((relation.left, relation.right)) in pairs:
                 problems.append(
-                    f"Relate `{ref_text(left)}` to another site or file in `{equation.text()}`"
+                    f"Relate `{relation.left}` and `{relation.right}` in only one relation"
                 )
-            elif frozenset((left, right)) in pairs:
-                problems.append(
-                    f"Relate `{ref_text(left)}` and `{ref_text(right)}` in only one relation"
-                )
-            pairs.append(frozenset((left, right)))
+            pairs.append(frozenset((relation.left, relation.right)))
         result = [Problem(self._where, message) for message in problems]
-        members = (
-            [Label(label) for _, label in self._sites]
-            + [ref.unmarked() for ref in self._group.file_refs()]
-            + [Label(label) for label, _ in self._group.no_file_sites]
-        )
+        marked = [label for _, label in self._sites]
+        unmarked = [label for label, _ in self._group.unmarked_labels()]
+        members = set(marked) | set(unmarked)
         if len(members) < 2:
             result.append(
                 Problem(
                     self._where,
-                    f"COUPLED:{self._key}: needs at least two sites or files, and has "
-                    f"{len(members)}. Mark or list the others, or if it's been removed, remove "
-                    "its table",
+                    f"COUPLED:{self._key}: needs at least two sites, and has {len(members)}. "
+                    "Mark or label the others, or if it's been removed, remove its table",
                 )
             )
-        if bare:
-            return result
-        related = {_plain(ref) for equation in equations for ref in refs(equation)}
+        related = {label for relation in relations for label in (relation.left, relation.right)}
         for site, label in self._sites:
-            if Label(label) not in related:
+            if label not in related:
                 result.append(
                     Problem(
                         site.where,
@@ -451,23 +447,13 @@ class _GroupCheck:
                         f"{table_name(self._key)}",
                     )
                 )
-        marked = [label for _, label in self._sites]
-        for label, _ in self._group.no_file_sites:
-            if Label(label) not in related and label not in marked:
+        for label, field in self._group.unmarked_labels():
+            if label not in related and label not in marked:
                 result.append(
                     Problem(
                         self._where,
-                        f"Nothing relates `{label}`, which has no file: name it in a relation of "
+                        f"Nothing relates `{label}`, in `{field}`: name it in a relation of "
                         f"{table_name(self._key)}",
-                    )
-                )
-        for ref in self._group.files:
-            if ref.unmarked() not in related:
-                result.append(
-                    Problem(
-                        self._where,
-                        f"Nothing relates `{ref.text()}`: name it in a relation, or for a group "
-                        "whose sites are all the same, make its relation a bare op",
                     )
                 )
         return result
@@ -488,7 +474,7 @@ class _GroupCheck:
     def _values(self) -> list[Problem]:
         """The relations of a group using value ops."""
         problems: list[Problem] = []
-        readings: dict[Ref, tuple[str, Value]] = {}
+        readings: dict[str, tuple[str, Value]] = {}
         for site, label in self._sites:
             if site.code is None:
                 reading: Value | Unreadable = Unreadable(_NO_LINE)
@@ -496,7 +482,7 @@ class _GroupCheck:
                 reading = read_value(site.code, self._group.selector(label))
             match reading:
                 case Value():
-                    readings[Label(label)] = (site.where, reading)
+                    readings[label] = (site.where, reading)
                 case Unreadable(reason):
                     problems.append(
                         Problem(
@@ -508,13 +494,14 @@ class _GroupCheck:
                     )
                 case _:
                     assert_never(reading)
-        for ref, text in self._local_files():
-            reading = read_file_value(text, ref.pointer) or Unreadable(
-                "it has more than one line: point at its value with #<pointer>, if it's JSON"
+        for label, ref, text in self._local_files():
+            reading = read_file_value(text, ref.pointer, self._group.selector(label)) or Unreadable(
+                "it has more than one line: point at its value with #<pointer> if it's JSON, "
+                f"or pick it out with `select = {{ {label} = '<regex>' }}`"
             )
             match reading:
                 case Value():
-                    readings[ref.unmarked()] = (ref.text(), reading)
+                    readings[label] = (ref.text(), reading)
                 case Unreadable(reason):
                     problems.append(Problem(ref.text(), f"Can't read this file's value: {reason}"))
                 case _:
@@ -529,7 +516,7 @@ class _GroupCheck:
     def _members(self) -> list[Problem]:
         """The relations of a group using set ops."""
         problems: list[Problem] = []
-        readings: dict[Ref, tuple[str, Members]] = {}
+        readings: dict[str, tuple[str, Members]] = {}
         for site, label in self._sites:
             if not site.block:
                 reading: Members | Unreadable = Unreadable(_NO_LINE)
@@ -537,7 +524,7 @@ class _GroupCheck:
                 reading = read_members(site.block, self._group.selector(label))
             match reading:
                 case Members():
-                    readings[Label(label)] = (site.where, reading)
+                    readings[label] = (site.where, reading)
                 case Unreadable(reason):
                     problems.append(
                         Problem(
@@ -549,11 +536,11 @@ class _GroupCheck:
                     )
                 case _:
                     assert_never(reading)
-        for ref, text in self._local_files():
-            reading = read_file_members(text, ref.pointer)
+        for label, ref, text in self._local_files():
+            reading = read_file_members(text, ref.pointer, self._group.selector(label))
             match reading:
                 case Members():
-                    readings[ref.unmarked()] = (ref.text(), reading)
+                    readings[label] = (ref.text(), reading)
                 case Unreadable(reason):
                     problems.append(
                         Problem(ref.text(), f"Can't read this file's members: {reason}")
@@ -570,17 +557,17 @@ class _GroupCheck:
     def _texts(self) -> list[Problem]:
         """The relations of a group using the text op."""
         problems: list[Problem] = []
-        readings: dict[Ref, tuple[str, Text]] = {}
+        readings: dict[str, tuple[str, Text]] = {}
         for site, label in self._sites:
             if site.block:
-                readings[Label(label)] = (site.where, text_of(site.block))
+                readings[label] = (site.where, text_of(site.block))
             else:
                 problems.append(Problem(site.where, f"Can't read this site's text: {_NO_LINE}"))
-        for ref, text in self._local_files():
+        for label, ref, text in self._local_files():
             reading = read_file_text(text, ref.pointer)
             match reading:
                 case Text():
-                    readings[ref.unmarked()] = (ref.text(), reading)
+                    readings[label] = (ref.text(), reading)
                 case Unreadable(reason):
                     problems.append(Problem(ref.text(), f"Can't read this file's text: {reason}"))
                 case _:
@@ -591,17 +578,15 @@ class _GroupCheck:
             problems += self._failure(pair, compare_text(pair.mine, pair.other), "text")
         return problems
 
-    def _local_files(self) -> list[tuple[FileRef, str]]:
-        """Each file in this repository the group refers to, with its text. One that isn't
-        there is left out: _files_problems reports it, unless it's optional."""
-        found: list[tuple[FileRef, str]] = []
-        for ref in self._group.file_refs():
-            if ref.repo is not None:
-                continue
+    def _local_files(self) -> list[tuple[str, FileRef, str]]:
+        """Each file in this repository the group gives a label, with its label and text. One
+        that isn't there is left out: _files_problems reports it, unless it's optional."""
+        found: list[tuple[str, FileRef, str]] = []
+        for label, ref in self._group.local_files:
             file = self._files.get(ref.path)
             match file:
                 case Content(text):
-                    found.append((ref, text))
+                    found.append((label, ref, text))
                 case Missing() | None:
                     pass
                 case _:
@@ -609,25 +594,18 @@ class _GroupCheck:
         return found
 
     def _pairs[T, O: Op](
-        self, readings: dict[Ref, tuple[str, T]], family: type[O]
+        self, readings: dict[str, tuple[str, T]], family: type[O]
     ) -> list[_Pair[T, O]]:
-        """Each two readings that a relation using an op of family compares: an equation's two
-        refs, where both were read, or for a bare op, each reading with the first."""
+        """Each two readings that a relation using an op of family compares, where both were
+        read."""
         pairs: list[_Pair[T, O]] = []
         for relation in self._group.relations:
             op = relation.op
             if not isinstance(op, family):
                 continue
-            match relation:
-                case Equation(left=left, right=right, formula=formula):
-                    mine, other = readings.get(_plain(left)), readings.get(_plain(right))
-                    if mine is not None and other is not None:
-                        pairs.append(_Pair(relation.text(), op, formula, *mine, *other))
-                case Bare():
-                    every = list(readings.values())
-                    pairs += [_Pair(str(op), op, None, *each, *every[0]) for each in every[1:]]
-                case _:
-                    assert_never(relation)
+            mine, other = readings.get(relation.left), readings.get(relation.right)
+            if mine is not None and other is not None:
+                pairs.append(_Pair(relation.text(), op, relation.formula, *mine, *other))
         return pairs
 
     def _failure[T, O: Op](self, pair: _Pair[T, O], verdict: Verdict, things: str) -> list[Problem]:
@@ -656,7 +634,3 @@ class _GroupCheck:
                 ]
             case _:
                 assert_never(verdict)
-
-
-def _plain(ref: Ref) -> Ref:
-    return ref.unmarked() if isinstance(ref, FileRef) else ref

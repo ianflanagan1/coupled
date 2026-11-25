@@ -103,13 +103,17 @@ def test_an_edited_block_of_a_set_or_text_group_is_left_to_the_relations() -> No
 
 def test_a_file_a_set_or_text_group_names_is_not_recorded() -> None:
     for op in ("same-set", "same-text"):
-        text = JUDGED.replace('"invoice same-as cart"', f'"invoice {op} ./vat.txt"')
+        text = JUDGED.replace('"invoice same-as cart"', f'"invoice {op} vat"') + (
+            'has-no-marker = { vat = "./vat.txt" }\n'
+        )
         now = current(sites({"a.py": VAT["a.py"]}), registry(text), {"vat.txt": Content("5")})
         assert [site.site.name for site in now["vat"].sites] == ["COUPLED:vat: invoice"]
 
 
 def test_an_edited_file_a_judged_group_names_is_reported() -> None:
-    text = JUDGED.replace('"invoice same-as cart"', '"invoice same-shape ./schema.json"')
+    text = JUDGED.replace('"invoice same-as cart"', '"invoice same-shape schema"') + (
+        'has-no-marker = { schema = "./schema.json" }\n'
+    )
     group = {"a.py": VAT["a.py"]}
     first = current(sites(group), registry(text), {"schema.json": Content("{}")})
     old = reviewed({}, first, ["vat"])

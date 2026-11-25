@@ -88,9 +88,14 @@ def test_a_key_with_no_table_is_reported_at_its_first_site() -> None:
     assert '["COUPLED:upload-limit:"]' in problem.message
 
 
-def test_a_label_no_marker_has_is_reported() -> None:
+def test_a_label_no_site_has_is_reported() -> None:
     found = problems(UPLOAD_FILES, UPLOAD.replace("app", "application"), {}, OFF)
-    assert any("No site is labelled `application`" in m for m in messages_of(found))
+    assert (
+        'coupled-registry.toml ["COUPLED:upload-limit:"] No site is labelled `application`. Mark '
+        "it `COUPLED:upload-limit: application`, or if it can't hold a marker, give it the label "
+        "in `has-no-marker` or `has-no-file`, or if it's a site in another repository that "
+        "keeps this group, in `in-another-registry`; or fix the label here"
+    ) in messages_of(found)
 
 
 def test_two_sites_with_one_label_are_reported() -> None:
@@ -115,44 +120,96 @@ def test_a_site_nothing_relates_is_reported() -> None:
     assert any(p.where == "php.ini:1" and "Nothing relates" in p.message for p in found)
 
 
-def test_a_bare_op_relates_every_site_and_file() -> None:
+def test_every_relation_of_a_group_is_compared() -> None:
     files = {
         "Dockerfile": "# COUPLED:node-version: docker\nFROM node:24.22.1-slim",
         "ci.yml": 'node-version: "24"  # COUPLED:node-version: ci',
     }
-    groups = '["COUPLED:node-version:"]\nrelations = ["="]\nfiles = ["./.nvmrc"]\n'
+    groups = (
+        '["COUPLED:node-version:"]\nrelations = ["docker = ci", "nvmrc = ci"]\n'
+        'has-no-marker = { nvmrc = "./.nvmrc" }\n'
+    )
     assert problems(files, groups, {".nvmrc": Content("24.22\n")}, OFF) == []
     found = problems(files, groups, {".nvmrc": Content("22\n")}, OFF)
     assert messages_of(found)[0].startswith(
-        "./.nvmrc `=` doesn't hold with Dockerfile:1: 22 = 24.22.1. Change the values"
+        "./.nvmrc `nvmrc = ci` doesn't hold with ci.yml:1: 22 = 24. Change the values"
     )
 
 
 def test_a_file_s_value_is_read_at_its_pointer() -> None:
-    groups = '["COUPLED:upload-limit:"]\nrelations = ["proxy = ./limits.json#/upload_mb"]\n'
+    groups = (
+        '["COUPLED:upload-limit:"]\nrelations = ["proxy = limits"]\n'
+        'has-no-marker = { limits = "./limits.json#/upload_mb" }\n'
+    )
     files = {"nginx.conf": UPLOAD_FILES["nginx.conf"]}
     assert problems(files, groups, {"limits.json": Content('{"upload_mb": 10}')}, OFF) == []
     found = problems(files, groups, {"limits.json": Content('{"upload_mb": 5}')}, OFF)
     assert "doesn't hold with ./limits.json#/upload_mb: 10m = 5" in messages_of(found)[0]
 
 
+def test_a_selector_picks_a_file_s_value_out_of_its_lines() -> None:
+    groups = (
+        '["COUPLED:upload-limit:"]\nrelations = ["app = env"]\n'
+        "has-no-marker = { env = \"./.env\" }\nselect = { env = '^UPLOAD_MB=(\\d+)' }\n"
+    )
+    files = {"app.py": UPLOAD_FILES["app.py"]}
+    env: dict[str, FileRead] = {".env": Content("NAME=x\nUPLOAD_MB=8\n")}
+    assert problems(files, groups, env, OFF) == []
+    env = {".env": Content("NAME=x\nUPLOAD_MB=9\n")}
+    assert "doesn't hold with ./.env: 8 = 9" in messages_of(problems(files, groups, env, OFF))[0]
+
+
+def test_a_file_picked_out_by_both_a_pointer_and_a_selector_is_reported() -> None:
+    groups = (
+        '["COUPLED:upload-limit:"]\nrelations = ["app = limits"]\n'
+        'has-no-marker = { limits = "./limits.json#/upload_mb" }\n'
+        "select = { limits = '(\\d+)' }\n"
+    )
+    found = problems(
+        {"app.py": UPLOAD_FILES["app.py"]}, groups, {"limits.json": Content("{}")}, OFF
+    )
+    assert any("with its #pointer or with `select`, not both" in m for m in messages_of(found))
+
+
+def test_a_file_that_holds_a_marker_of_the_group_cannot_be_said_to_have_no_comments() -> None:
+    groups = UPLOAD + 'has-no-marker = { limit = "./app.py" }\n'
+    found = problems(UPLOAD_FILES, groups, {"app.py": Content(UPLOAD_FILES["app.py"])}, OFF)
+    assert (
+        'coupled-registry.toml ["COUPLED:upload-limit:"] `./app.py` holds a marker of '
+        "COUPLED:upload-limit:, so it can hold one: mark `limit` there and drop it from "
+        "`has-no-marker`"
+    ) in messages_of(found)
+
+
 def test_a_missing_file_is_reported_unless_it_is_optional() -> None:
-    groups = '["COUPLED:v:"]\nrelations = ["="]\nfiles = ["./.nvmrc", "./.env?"]\n'
+    groups = (
+        '["COUPLED:v:"]\nrelations = ["a = nvmrc", "a = env"]\n'
+        'has-no-marker = { nvmrc = "./.nvmrc", env = "./.env?" }\n'
+    )
     files = {"a.txt": "X = 1  # COUPLED:v: a"}
     found = problems(files, groups, {".nvmrc": Missing(), ".env": Missing()}, OFF)
     assert [p.where for p in found] == ["./.nvmrc"]
 
 
 def test_a_group_of_files_alone_needs_no_marker() -> None:
-    groups = '["COUPLED:v:"]\nrelations = ["./.nvmrc = ./.tool-version"]\n'
+    groups = (
+        '["COUPLED:v:"]\nrelations = ["nvmrc = tools"]\n'
+        'has-no-marker = { nvmrc = "./.nvmrc", tools = "./.tool-version" }\n'
+    )
     others: dict[str, FileRead] = {".nvmrc": Content("24\n"), ".tool-version": Content("24\n")}
     assert problems({}, groups, others, OFF) == []
 
 
-def test_a_group_with_one_member_is_reported() -> None:
-    groups = '["COUPLED:v:"]\nrelations = ["="]\n'
-    [problem] = problems({"a.txt": "X = 1  # COUPLED:v: a"}, groups, {}, OFF)
-    assert "needs at least two sites or files, and has 1" in problem.message
+def test_a_group_with_one_site_is_reported() -> None:
+    groups = '["COUPLED:v:"]\nrelations = []\n'
+    found = problems({"a.txt": "X = 1  # COUPLED:v: a"}, groups, {}, OFF)
+    assert any("needs at least two sites, and has 1" in m for m in messages_of(found))
+
+
+def test_a_site_related_to_itself_is_reported() -> None:
+    groups = '["COUPLED:upload-limit:"]\nrelations = ["proxy >= app", "app = app"]\n'
+    found = problems(UPLOAD_FILES, groups, {}, OFF)
+    assert any("Relate `app` to another site in `app = app`" in m for m in messages_of(found))
 
 
 def test_a_group_mixing_kinds_of_op_is_reported() -> None:
@@ -220,14 +277,18 @@ def test_a_set_relation_that_does_not_hold_names_what_only_one_site_holds() -> N
     ]
 
 
-def test_a_bare_same_set_compares_every_site_and_file() -> None:
-    groups = '["COUPLED:status:"]\nrelations = ["same-set"]\nfiles = ["./statuses.json#/all"]\n'
+def test_a_site_s_members_are_compared_with_a_file_s() -> None:
+    groups = (
+        '["COUPLED:status:"]\nrelations = ["web subset-of app", "statuses same-set app"]\n'
+        'has-no-marker = { statuses = "./statuses.json#/all" }\n'
+    )
     same: dict[str, FileRead] = {"statuses.json": Content('{"all": ["stored", "pending"]}')}
     assert problems(STATUS_FILES, groups, same, OFF) == []
     fewer: dict[str, FileRead] = {"statuses.json": Content('{"all": ["pending"]}')}
     found = problems(STATUS_FILES, groups, fewer, OFF)
     assert messages_of(found)[0].startswith(
-        "./statuses.json#/all `same-set` doesn't hold with app.py:1: `stored` is only there."
+        "./statuses.json#/all `statuses same-set app` doesn't hold with app.py:1: `stored` is "
+        "only there."
     )
 
 
@@ -263,7 +324,7 @@ def test_a_site_whose_members_cannot_be_read_asks_for_a_selector() -> None:
 
 STEPS = """
 ["COUPLED:setup:"]
-relations = ["same-text"]
+relations = ["ci same-text release"]
 """
 
 STEPS_FILES = {
@@ -285,14 +346,17 @@ def test_text_that_differs_is_reported_with_the_first_line_that_does() -> None:
     release = STEPS_FILES["release.yml"].replace("npm ci", "npm install")
     found = problems({**STEPS_FILES, "release.yml": release}, STEPS, {}, OFF)
     assert messages_of(found) == [
-        "release.yml:1 `same-text` doesn't hold with ci.yml:1: `- run: npm install` here is "
-        "`- run: npm ci` there. Change the text so it holds; change the relation only if what "
-        "must hold has changed"
+        "ci.yml:1 `ci same-text release` doesn't hold with release.yml:1: `- run: npm ci` here "
+        "is `- run: npm install` there. Change the text so it holds; change the relation only if "
+        "what must hold has changed"
     ]
 
 
 def test_a_site_s_text_is_compared_with_a_file_s() -> None:
-    groups = '["COUPLED:setup:"]\nrelations = ["ci same-text ./steps.txt"]\n'
+    groups = (
+        '["COUPLED:setup:"]\nrelations = ["ci same-text steps"]\n'
+        'has-no-marker = { steps = "./steps.txt" }\n'
+    )
     files = {"ci.yml": STEPS_FILES["ci.yml"]}
     steps: dict[str, FileRead] = {
         "steps.txt": Content("- uses: actions/checkout@v4\n- run: npm ci\n")
@@ -314,7 +378,7 @@ def test_the_markers_of_sites_inside_a_block_are_not_part_of_its_text() -> None:
             '  node-version: "24"  # COUPLED:node: release. Pinned.\n# COUPLED:setup:END'
         ),
     }
-    groups = STEPS + '["COUPLED:node:"]\nrelations = ["="]\n'
+    groups = STEPS + '["COUPLED:node:"]\nrelations = ["ci = release"]\n'
     assert problems(files, groups, {}, OFF) == []
 
 
@@ -326,12 +390,14 @@ VAT_WHY = 'why = "an invoice and a cart must charge the same VAT"\n'
 
 
 def test_a_judged_group_s_relations_are_not_compared() -> None:
-    groups = '["COUPLED:vat:"]\nrelations = ["same-as"]\n' + VAT_WHY
+    groups = '["COUPLED:vat:"]\nrelations = ["invoice same-as cart"]\n' + VAT_WHY
     assert problems(VAT_FILES, groups, {}, OFF) == []
 
 
 def test_a_judged_group_that_does_not_say_why_is_reported() -> None:
-    [problem] = problems(VAT_FILES, '["COUPLED:vat:"]\nrelations = ["same-as"]\n', {}, OFF)
+    [problem] = problems(
+        VAT_FILES, '["COUPLED:vat:"]\nrelations = ["invoice same-as cart"]\n', {}, OFF
+    )
     assert problem.where == 'coupled-registry.toml ["COUPLED:vat:"]'
     assert problem.message.startswith("Say why these sites are coupled, as `why = ")
 
@@ -413,7 +479,9 @@ def test_a_site_with_no_file_needs_no_marker_and_is_not_compared() -> None:
 
 
 def test_a_site_with_no_file_counts_toward_the_group_s_two_members() -> None:
-    groups = '["COUPLED:v:"]\nrelations = ["="]\nhas-no-file = { console = "a dashboard" }\n'
+    groups = (
+        '["COUPLED:v:"]\nrelations = ["a = console"]\nhas-no-file = { console = "a dashboard" }\n'
+    )
     assert problems({"a.txt": "X = 1  # COUPLED:v: a"}, groups, {}, OFF) == []
 
 
@@ -433,15 +501,31 @@ def test_a_site_with_no_file_that_nothing_relates_is_reported() -> None:
     groups = UPLOAD + 'has-no-file = { cdn = "the CDN\'s dashboard" }\n'
     found = problems(UPLOAD_FILES, groups, {}, OFF)
     assert messages_of(found) == [
-        'coupled-registry.toml ["COUPLED:upload-limit:"] Nothing relates `cdn`, '
-        'which has no file: name it in a relation of ["COUPLED:upload-limit:"]'
+        'coupled-registry.toml ["COUPLED:upload-limit:"] Nothing relates `cdn`, in '
+        '`has-no-file`: name it in a relation of ["COUPLED:upload-limit:"]'
     ]
 
 
 def test_a_selector_for_a_site_with_no_file_is_reported() -> None:
     groups = GOOGLE + "select = { google = '(.*)' }\n"
     found = problems(REDIRECT, groups, {}, OFF)
-    assert any("Drop `google` from `select`" in m for m in messages_of(found))
+    assert any(
+        "Drop `google` from `select`: it has no file for the lint to read" in m
+        for m in messages_of(found)
+    )
+
+
+def test_a_selector_for_a_file_in_another_repository_is_reported() -> None:
+    groups = (
+        '["COUPLED:upload-limit:"]\nrelations = ["app = api"]\n'
+        'has-no-marker = { api = "//github.com/me/api/limits.txt" }\n'
+        "select = { api = '(\\d+)' }\n"
+    )
+    found = problems({"app.py": UPLOAD_FILES["app.py"]}, groups, {}, OFF)
+    assert any(
+        "Drop `api` from `select`: it's in another repository, which the lint doesn't read" in m
+        for m in messages_of(found)
+    )
 
 
 def test_sites_with_no_file_are_listed_as_not_checked() -> None:
@@ -450,11 +534,12 @@ def test_sites_with_no_file_are_listed_as_not_checked() -> None:
     assert no_file_sites(parsed) == ["oauth-redirect google"]
 
 
-def test_a_repository_one_group_names_several_files_in_is_listed_once() -> None:
+def test_a_repository_one_group_names_several_sites_in_is_listed_once() -> None:
     parsed = parse(
         "version = 1\n"
-        '["COUPLED:schema:"]\nrelations = ["same-shape"]\n'
-        'files = ["//github.com/me/rules/a.json", "//github.com/me/rules/b.go"]\n'
+        '["COUPLED:schema:"]\nrelations = ["x same-shape a", "x same-shape b"]\n'
+        'has-no-marker = { a = "//github.com/me/rules/a.json" }\n'
+        'in-another-registry = { b = "//github.com/me/rules" }\n'
         'why = "both read one listing"\n'
     )
     assert isinstance(parsed, Registry)
@@ -464,7 +549,9 @@ def test_a_repository_one_group_names_several_files_in_is_listed_once() -> None:
 def test_a_file_one_group_names_twice_is_read_once() -> None:
     parsed = parse(
         "version = 1\n"
-        '["COUPLED:v:"]\nrelations = ["./a.json#/x = ./b.json", "./a.json#/y = ./c.json"]\n'
+        '["COUPLED:v:"]\nrelations = ["ax = b", "ay = c"]\n'
+        'has-no-marker = { ax = "./a.json#/x", ay = "./a.json#/y", b = "./b.json", '
+        'c = "./c.json" }\n'
     )
     assert isinstance(parsed, Registry)
     assert file_paths(parsed) == ["a.json", "b.json", "c.json"]

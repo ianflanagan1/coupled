@@ -131,10 +131,16 @@ def read_value(code: str, selector: str | None) -> Reading:
     return Unreadable(f"`{code}` has no single value")
 
 
-def read_file_value(content: str, pointer: str | None) -> Reading | None:
-    """The value in a file a group refers to: at the JSON Pointer, or if there's none, the whole
-    file when it's one line. None when there's no pointer and the file is longer, so the ref
-    only lists the file."""
+def read_file_value(content: str, pointer: str | None, selector: str | None) -> Reading | None:
+    """The value in a file a group refers to: what the selector first matches in it (its
+    capture group, if it has one), with `^` and `$` matching at each line; or at the JSON
+    Pointer; or if there's neither, the whole file when it's one line. None when there's neither
+    and the file is longer."""
+    if selector is not None:
+        match = re.search(selector, content, re.MULTILINE)
+        if match is None:
+            return Unreadable(f"the selector @/{selector}/ matches nothing in it")
+        return Value(match.group(1) if match.re.groups else match.group())
     if pointer is None:
         lines = content.strip().splitlines()
         return Value(lines[0].strip()) if len(lines) == 1 else None
@@ -169,9 +175,13 @@ def read_members(block: tuple[str, ...], selector: str | None) -> Members | Unre
     return Unreadable(f"the selector @/{selector}/ matches nothing in its lines")
 
 
-def read_file_members(content: str, pointer: str | None) -> Members | Unreadable:
-    """The names in a file a group refers to: at the JSON Pointer, a list's items or an object's
-    keys, or if there's no pointer, the file's lines."""
+def read_file_members(
+    content: str, pointer: str | None, selector: str | None
+) -> Members | Unreadable:
+    """The names in a file a group refers to: every match of the selector in its lines; or at
+    the JSON Pointer, a list's items or an object's keys; or if there's neither, its lines."""
+    if selector is not None:
+        return read_members(tuple(content.splitlines()), selector)
     if pointer is None:
         return Members(tuple(dict.fromkeys(text_of(content.splitlines()).lines)))
     try:

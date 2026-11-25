@@ -89,9 +89,7 @@ def current(
 def _judged_files(group: Group, files: dict[str, FileRead]) -> list[CurrentSite]:
     """Each file in this repository that a group of judged ops names, as it is now."""
     records: list[CurrentSite] = []
-    for ref in group.file_refs():
-        if ref.repo is not None:
-            continue
+    for _, ref in group.local_files:
         file = files.get(ref.path)
         match file:
             case Content(text):

@@ -23,7 +23,8 @@ MAX_UPLOAD_MB = 8  # COUPLED:upload-limit: app
 version = 1
 
 ["COUPLED:upload-limit:"]
-relations = ["proxy >= app", "proxy = ./limits.json#/upload_mb"]
+relations = ["proxy >= app", "proxy = limits"]
+has-no-marker = { limits = "./limits.json#/upload_mb" }
 ```
 
 A marker's key names its group; its label names this site within the group. A key and a label are lowercase letters and digits, in words joined by single hyphens, and the space between them is part of the form: what to search for to find a group is `COUPLED:<key>:`, which finds each of its sites and its table in the registry, as the table is named the same way. Prose goes before `COUPLED:`, or after the label and a `.`: `COUPLED:upload-limit: proxy. Larger bodies get a 413.`
@@ -34,10 +35,11 @@ A file whose `COUPLED:` text is all examples, such as the ianf-coupled skill cop
 
 Each group has a table in the registry, named `["COUPLED:<key>:"]`:
 
-- `relations`: each `<ref> <op> <ref> [<arith> <number>]`, the first ref's value by op the second's through the formula; or a bare op, `=`, `same-set`, `same-text`, `same-as` or `same-shape`, alone, when every site and file of the group is the same. A ref is a site, by its label, or a file that can't hold a marker: `./<path>[?][#<pointer>]` in this repository or `//<git-host>/<owner>/<name>/<path>[?][#<pointer>]` in another, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`.
-- `files`: files in a group whose relation is a bare op, which no relation names.
-- `select`: a regex for a site, by its label, picking its value out of its line when the lint can't, with the value in its one capture group: `select = { url = ':(\d+)$' }`. In a group using set ops, it picks each member out of the site's block, one for each match: `select = { table = '^([a-z_]+) ' }`.
-- `has-no-file`: each site that's in no file at all, such as a setting made in a cloud console, by a label that relations name it by, with where it's set: `has-no-file = { google = "Google Cloud console > Credentials > Authorised redirect URIs" }`. Rewording where needs no review.
+- `relations`: each `<label> <op> <label> [<arith> <number>]`, the first site's value by op the second's through the formula. Every relation names two sites by their labels, and every site is named in one.
+- `has-no-marker`: a label for each file that holds no marker. In this repository, it's one that can't hold a marker, or not where its value is, such as JSON, `.nvmrc`, or a value inside a YAML block scalar: `./<path>[?][#<pointer>]`, with a JSON Pointer to the value in it, and `?` when it's only sometimes there, such as an untracked `.env`: `has-no-marker = { nvmrc = "./.nvmrc", api = "./config/limits.json#/upload_mb" }`. In another repository that keeps no such group, such as a third party's published schema, it's `//<git-host>/<owner>/<name>/<path>[#<pointer>]`, which the lint doesn't read.
+- `in-another-registry`: a label for each site in another repository that keeps the group too, by the repository alone: `in-another-registry = { api = "//github.com/example/upload-api" }`. The label is one of that repository's own sites in the group, which a marker there or its registry describes. The lint doesn't read it.
+- `has-no-file`: a label for each site that's in no file at all, such as a setting made in a cloud console, with where it's set: `has-no-file = { google = "Google Cloud console > Credentials > Authorised redirect URIs" }`. Rewording where needs no review.
+- `select`: a regex for a site, by its label, picking its value out of its line, or out of a file in `has-no-marker`, when the lint can't, with the value in its one capture group: `select = { url = ':(\d+)$' }`. In a file, `^` and `$` match at each line. In a group using set ops, it picks each member out of the site's block or file, one for each match: `select = { table = '^([a-z_]+) ' }`.
 - `why`: why the sites must change together, which the lint shows when a relation fails and the hooks show beside the group: `why = "nginx rejects a larger body before the app sees it"`. A group using judged ops must give one. Rewording it needs no review.
 
 Ops are of four kinds, by what they read each site as, and a group uses one kind:
@@ -53,7 +55,7 @@ The lint treats the judged ops alike, so each tells a reviewer what to compare, 
 
 When only part of what two sites share can be compared, relate them twice, with two keys. A table's column names and a model's field names are a set, while their types take a reader, so [examples/demo](examples/demo) marks both blocks for `upload-columns`, a set group, and for `upload-shape`, a judged one.
 
-A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no marker. A group in two repositories names the other's files with `//`; each repository's registry describes its own side.
+A site's label is all a relation knows of it, so a site can move between a marker and a labelled entry without its relations changing. A label is unique within its group, across markers and all three fields. A group may be all files, such as `.nvmrc` and `.tool-versions`, and need no marker. A group in two repositories has the same key in both, and each names the other's sites by their labels in `in-another-registry`; each repository's registry describes only its own side, so a file there moves without a change here.
 
 A setting kept in no repository at all, such as one made in a cloud console or a provider's dashboard, has no file to mark. It can join a group in two ways:
 
@@ -66,17 +68,17 @@ Start with the registry alone if writing the doc would stop the coupling being r
 
 - **markers:** a key or label not in lowercase words joined by hyphens, a marker with no label, prose straight after a label with no `.` between, a tag in the old bracket form, and a marker with no line of code after it
 - **block ends:** an END with no marker of its key above it to close, a block holding another of its own key, blocks that overlap, and an END after a marker of a group using value ops
-- **the registry:** none when there are markers, one that isn't TOML or has no `version = 1`, a table not named `["COUPLED:<key>:"]`, a field it doesn't know, and a relation, file or selector it can't read
-- **groups:** a key with no table, a label no marker or `has-no-file` entry has, or two markers share, a site in `has-no-file` that's also marked, selected or not related, a group with fewer than two sites and files, one mixing ops of different kinds, a bare op beside other relations, two relations between the same sites, a site relating to itself, a formula with an op that isn't a value op, a selector in a group of text or judged ops, a group of judged ops with no `why`, a formula multiplying or dividing by 0, and a site or file nothing relates
-- **files:** a file in this repository that isn't there, unless it's marked optional, and one that holds a marker of the group, which should be named by its label
+- **the registry:** none when there are markers, one that isn't TOML or has no `version = 1`, a table not named `["COUPLED:<key>:"]`, a field it doesn't know, and a relation, labelled entry or selector it can't read
+- **groups:** a key with no table, a label no site has, a label two markers share or two fields give, a labelled entry that's also marked, a selector for a site in another repository or with no file, a file picked out by both a pointer and a selector, a group with fewer than two sites, one mixing ops of different kinds, two relations between the same sites, a site relating to itself, a formula with an op that isn't a value op, a selector in a group of text or judged ops, a group of judged ops with no `why`, a formula multiplying or dividing by 0, and a site nothing relates
+- **files:** a file in this repository in `has-no-marker` that isn't there, unless it's marked optional, and one that holds a marker of the group, so can hold one
 - **relations**, in groups using value, set or text ops: a site or file it can't read, and a relation that doesn't hold, with what it compared (the two values, the names only one set holds, or the first line of text that differs), and a reminder to change the sites rather than the relation unless what must hold has changed
 - **the reviewed section:** a group that differs from what it records, with each site's current value in a group using value ops (see [The reviewed section](#the-reviewed-section)), and a key given to `--update` that has no group
 - **the message:** a marker without the message after its label when the [settings](#settings) turn it on, or with one when they don't
 - **unreadable files:** a file holding `COUPLED:` that isn't UTF-8
 
-The lint reads a site's value from the line its marker describes: the one quoted or backticked literal on it, else an image's version (`FROM node:24.22.1-alpine`), else the right-hand side of an assignment, else a directive's value (`client_max_body_size 10m;`), or what its selector picks out. A file gives its value at its pointer, or if it's one line, that line. Versions match on the parts both give, so `24` and `24.22.1` are `=`; numbers compare numerically, ignoring a unit suffix such as `m` in `10m`; anything else compares as text, by `=` and `!=` only.
+The lint reads a site's value from the line its marker describes: the one quoted or backticked literal on it, else an image's version (`FROM node:24.22.1-alpine`), else the right-hand side of an assignment, else a directive's value (`client_max_body_size 10m;`), or what its selector picks out. A file gives its value at its pointer, or what its selector first matches, or if it's one line, that line. Versions match on the parts both give, so `24` and `24.22.1` are `=`; numbers compare numerically, ignoring a unit suffix such as `m` in `10m`; anything else compares as text, by `=` and `!=` only.
 
-In a group using set ops, a site's members are the quoted literals on the lines of its block, or each match of its selector. A file gives the items of the JSON list at its pointer, or the keys of the object there, or with no pointer, its lines. Members compare as text, whatever their order.
+In a group using set ops, a site's members are the quoted literals on the lines of its block, or each match of its selector. A file gives the items of the JSON list at its pointer, or the keys of the object there, or each match of its selector, or with neither, its lines. Members compare as text, whatever their order.
 
 In a group using `same-text`, a site's text is its block, and a file's is all of it, or the JSON at its pointer. Indentation, blank lines and the markers of sites inside a block aren't part of its text, and nor is how the JSON is laid out.
 

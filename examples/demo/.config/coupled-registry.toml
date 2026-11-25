@@ -1,9 +1,10 @@
 version = 1
 
 ["COUPLED:upload-limit:"]
-relations = ["cdn >= nginx", "nginx >= app", "form = app", "app = ./config/limits.json#/upload_mb"]
+relations = ["nginx <= cdn", "nginx >= app", "form = app", "api = app", "client = app * 1048576"]
+has-no-marker = { api = "./config/limits.json#/upload_mb" }
 select = { form = 'data-max-mb="(\d+)"' }
-why = "Cloudflare and then nginx reject a larger body with a 413 before the app sees it, and the form and the API's limits tell users the app's limit"
+why = "Cloudflare and then nginx reject a larger body with a 413 before the app sees it, the form and the API's limits tell users the app's limit, and the web client refuses a larger file, in bytes, before sending it"
 
 ["COUPLED:oauth-redirect:"]
 relations = ["app = google"]
@@ -11,31 +12,34 @@ has-no-file = { google = "Google Cloud console > APIs & Services > Credentials >
 why = "Google refuses to send a user back to a URI the client doesn't list"
 
 ["COUPLED:request-timeout:"]
-relations = ["proxy >= app + 5"]
-why = "nginx must wait longer than the app, so the app's own timeout error reaches the client rather than a 504"
+relations = ["proxy >= app + 5", "balancer >= proxy", "proxy < client / 1000"]
+in-another-registry = { balancer = "//github.com/example/infra" }
+why = "nginx must wait longer than the app, and the load balancer longer than nginx, and the web client, counting in milliseconds, longer than nginx, so the app's own timeout error reaches the user rather than a 504"
 
 ["COUPLED:port:"]
-relations = ["compose = app"]
-select = { compose = '"(\d+):' }
-why = "compose publishes the port the app listens on"
+relations = ["compose = app", "dev = app", "metrics != app"]
+has-no-marker = { dev = "./web/package.json" }
+select = { compose = '"(\d+):', dev = 'localhost:(\d+)' }
+why = "compose publishes the port the app listens on, the web's dev server sends API calls to it, and metrics are served on a port of their own"
 
 ["COUPLED:node-version:"]
-relations = ["="]
-files = ["./.nvmrc", "./.node-version?"]
+relations = ["ci = docker", "release = docker", "nvmrc = docker", "node-version-file = docker"]
+has-no-marker = { nvmrc = "./.nvmrc", node-version-file = "./.node-version?" }
 why = "CI tests, and a release is built, on the Node version the image and developers run"
 
 ["COUPLED:node-setup:"]
-relations = ["same-text"]
+relations = ["ci same-text release"]
 why = "a release is built with the steps CI tested, which two workflows can't share"
 
 ["COUPLED:python-version:"]
-relations = ["./.python-version = ./web/package.json#/engines/python-backend"]
+relations = ["python-version-file = web"]
+has-no-marker = { python-version-file = "./.python-version", web = "./web/package.json#/engines/python-backend" }
 why = "the web package's tooling runs the backend under the Python version it pins"
 
 ["COUPLED:breakpoint:"]
-relations = ["css = ts"]
-select = { css = 'max-width: (\d+)px' }
-why = "the layout code switches to mobile at the width the stylesheet does"
+relations = ["css = ts", "desktop > css", "ts = desktop - 1"]
+select = { css = 'max-width: (\d+)px', desktop = 'min-width: (\d+)px' }
+why = "the layout code switches to mobile at the width the stylesheet does, and the desktop layout starts one pixel above it"
 
 ["COUPLED:registry-path:"]
 relations = ["owners = settings"]
@@ -50,9 +54,15 @@ why = "the browser and the server must make the same safe name from a filename, 
 relations = [
     "model same-shape table",
     "type same-shape model",
-    "type same-shape //github.com/example/upload-api/schema/upload.json",
+    "type same-shape api",
 ]
+in-another-registry = { api = "//github.com/example/upload-api" }
 why = "the table stores, the model reads and the web receives one upload record, which the upload API's schema defines"
+
+["COUPLED:storage-event:"]
+relations = ["handler same-shape vendor", "docs described-by handler"]
+has-no-marker = { vendor = "//github.com/example-storage/notifications/schema/object-created.json#/properties" }
+why = "the object store sends its notice in the shape its published schema gives, which the handler reads and the docs describe"
 
 ["COUPLED:upload-columns:"]
 relations = ["model same-set table"]
@@ -60,23 +70,24 @@ select = { model = '^(\w+): ', table = '^([a-z_]+) ' }
 why = "the model reads each column of the table by its name"
 
 ["COUPLED:upload-status:"]
-relations = ["web subset-of app"]
-why = "the web shows only statuses the app can give an upload"
+relations = ["web subset-of app", "table superset-of app"]
+why = "the web shows only statuses the app can give an upload, and the table accepts every status the app gives, as well as the ones a cleanup job sets"
 
 # Written by coupled --update: each group as it was last reviewed. Don't edit below this line.
 
 [reviewed."COUPLED:breakpoint:"]
-definition = "5b394c04a69fd9d0"
+definition = "da861291c54d6bcd"
 "COUPLED:breakpoint: css" = {}
+"COUPLED:breakpoint: desktop" = {}
 "COUPLED:breakpoint: ts" = {}
 
 [reviewed."COUPLED:node-setup:"]
-definition = "6a4b7b26d7c7fc09"
+definition = "27ff64b29578614e"
 "COUPLED:node-setup: ci" = {}
 "COUPLED:node-setup: release" = {}
 
 [reviewed."COUPLED:node-version:"]
-definition = "0b62cf14bb9403c1"
+definition = "a8818c1f1941df6d"
 "COUPLED:node-version: ci" = {}
 "COUPLED:node-version: docker" = {}
 "COUPLED:node-version: release" = {}
@@ -86,12 +97,13 @@ definition = "af2772f3200a02a6"
 "COUPLED:oauth-redirect: app" = {}
 
 [reviewed."COUPLED:port:"]
-definition = "07b3ccec236290ec"
+definition = "dd14c6d2103b3bb2"
 "COUPLED:port: app" = {}
 "COUPLED:port: compose" = {}
+"COUPLED:port: metrics" = {}
 
 [reviewed."COUPLED:python-version:"]
-definition = "6cf464bb0c64aed5"
+definition = "fbe2c1d7cea4fc2f"
 
 [reviewed."COUPLED:registry-path:"]
 definition = "3421604aea224ae7"
@@ -99,8 +111,9 @@ definition = "3421604aea224ae7"
 "COUPLED:registry-path: settings" = {}
 
 [reviewed."COUPLED:request-timeout:"]
-definition = "13986db4799dc2ee"
+definition = "ae4f41029b301699"
 "COUPLED:request-timeout: app" = {}
+"COUPLED:request-timeout: client" = {}
 "COUPLED:request-timeout: proxy" = { unit = "s" }
 
 [reviewed."COUPLED:safe-name:"]
@@ -109,25 +122,32 @@ definition = "fe90665d3904692e"
 "COUPLED:safe-name: docs" = { block = "56c32758168be623" }
 "COUPLED:safe-name: web" = { block = "53e7bdee3837dfb4" }
 
+[reviewed."COUPLED:storage-event:"]
+definition = "11b820a743477dfc"
+"COUPLED:storage-event: docs" = { block = "0da07b7b6177adfa" }
+"COUPLED:storage-event: handler" = { block = "4a50db61ab7e5b6c" }
+
 [reviewed."COUPLED:upload-columns:"]
 definition = "f5f533399488fa75"
 "COUPLED:upload-columns: model" = {}
 "COUPLED:upload-columns: table" = {}
 
 [reviewed."COUPLED:upload-limit:"]
-definition = "4f2e8973754b7203"
+definition = "79ccfc5a5bf95ff4"
 "COUPLED:upload-limit: app" = {}
 "COUPLED:upload-limit: cdn" = {}
+"COUPLED:upload-limit: client" = {}
 "COUPLED:upload-limit: form" = {}
 "COUPLED:upload-limit: nginx" = { unit = "m" }
 
 [reviewed."COUPLED:upload-shape:"]
-definition = "50c5a87016d875d9"
+definition = "20fbaa1caacee9b0"
 "COUPLED:upload-shape: model" = { block = "8b6be5970825b580" }
-"COUPLED:upload-shape: table" = { block = "a473ff02a396bd6b" }
+"COUPLED:upload-shape: table" = { block = "b34b7dc01655a03f" }
 "COUPLED:upload-shape: type" = { block = "598a80c547fe978e" }
 
 [reviewed."COUPLED:upload-status:"]
-definition = "ef1659488f971a4e"
+definition = "986470b274c8af08"
 "COUPLED:upload-status: app" = {}
+"COUPLED:upload-status: table" = {}
 "COUPLED:upload-status: web" = {}
