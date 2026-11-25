@@ -101,6 +101,20 @@ A block's fingerprint ignores indentation, blank lines, and the markers and ENDs
 
 It does **not** look at diffs. Diff-aware enforcement in the style of Google's `LINT.IfChange` is out of scope; the reviewed section gives the same effect from the code alone.
 
+## Comparing shapes, possibly later
+
+`same-shape` is judged: the lint records each block and reports a change to one, but never reads the fields. It could compare them, if there's demand. Not decided, and nothing below is built.
+
+- **What it would compare:** each site's data declaration, such as a Python model, a Go struct, a TypeScript type, a PHP class, a SQL `CREATE TABLE` or a JSON Schema, reduced to one canonical form: each field's outside name (from a struct tag, alias or column name, else its declared name), its kind (`string`, `integer`, `number`, `boolean`, `bytes`, `decimal`, `instant`, a list, a map, an enum, a nested record or a union), and whether it's required and whether it's nullable. A restricted JSON Schema is the likely form, so a JSON Schema site needs almost no extraction.
+- **How it would read them:** from syntax alone, never running or type-checking the project, with tree-sitter grammars and a query and kind mapping for each language. A type the block names but doesn't declare, such as a parent class, a trait or an alias from another file, becomes a reference by name. Following imports through syntax, such as PHP's `use` statements and Composer's `psr-4` map, could resolve most of them later.
+- **Where it would live:** extraction in code-rulebook, as one Go command that prints the canonical form for a file's lines; the comparison in coupled's core, which reports the fields only one site has and the fields whose kind or optionality differs. coupled would find the command on the PATH, with no declared dependency, and read its output against the form's version.
+- **When a relation is checked:** a `languages` setting would name the languages the repository's shape sites are in. With it set, the lint would fail on a `same-shape` site in a language it doesn't list, on a missing command or grammar, and on a site it can't compare, such as an unresolved parent, rather than leave the relation judged. Sites in other repositories and sites with no file stay not checked, as now. Without it, `same-shape` stays judged.
+- **Review stays:** matching fields don't show that the fields mean the same, so a checked group would still record its blocks in the reviewed section.
+
+Both changes would be made to version 1 of the registry and the settings, with `same-shape` keeping its name.
+
+Where one side can be generated from the other, such as TypeScript types from a PHP API's OpenAPI spec or its classes, generating it is better than any group: there's one source of truth, and CI regenerating it and failing on a diff catches drift with no reviewer. `same-shape` is for couplings where neither side can be generated, such as a SQL table and a model with no generator between them, or a schema written only as prose.
+
 ## Usage
 
 ```sh
