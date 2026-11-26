@@ -1,4 +1,5 @@
-"""A repository's settings for its COUPLED markers, committed as .config/coupled.toml:
+"""A repository's settings for its COUPLED markers, committed as .config/coupled.toml, or as
+coupled.toml at its root, but not both:
 
     version = 1                                      # the file format's version: see schema/
     exclude = ["README.md", "tests"]                 # paths not checked; none by default
@@ -14,7 +15,10 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import assert_never, final
 
+# The settings file's paths from the repository's root: in .config, which keeps the root tidy,
+# or at the root, where most tools keep theirs.
 FILE = ".config/coupled.toml"
+ROOT_FILE = "coupled.toml"
 
 # The registry's path from the repository's root, unless the settings name another.
 REGISTRY_FILE = "coupled-registry.toml"
@@ -70,6 +74,16 @@ class Settings:
     registry_file: str
     # What follows each marker's label.
     message: MarkerMessage
+
+
+def one_file(
+    in_config: Read | Invalid | None, at_root: Read | Invalid | None
+) -> Read | Invalid | None:
+    """The repository's settings file, from what was read at FILE and at ROOT_FILE, None being
+    no file there. Invalid when both are there, valid or not, so neither is edited in vain."""
+    if in_config is not None and at_root is not None:
+        return Invalid(f"There are settings in both {FILE} and {ROOT_FILE}: keep one of them.", ())
+    return in_config if in_config is not None else at_root
 
 
 def defaults() -> Settings:

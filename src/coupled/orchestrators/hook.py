@@ -11,7 +11,16 @@ from coupled.core import hook
 from coupled.core.markers import ignores_file
 from coupled.core.registry import entry_text
 from coupled.core.review import excluded
-from coupled.core.settings import Invalid, Read, Settings, defaults, settings
+from coupled.core.settings import (
+    FILE,
+    ROOT_FILE,
+    Invalid,
+    Read,
+    Settings,
+    defaults,
+    one_file,
+    settings,
+)
 
 
 class Repositories(Protocol):
@@ -32,9 +41,9 @@ class Files(Protocol):
 
 
 class SettingsFile(Protocol):
-    def read(self, root: str) -> Read | Invalid | None:
-        """The settings file of the repository at root, None if it has none, or Invalid if it
-        isn't a settings file in a version the lint reads."""
+    def read(self, root: str, name: str) -> Read | Invalid | None:
+        """The settings file at name from the repository's root, None if there's none, or
+        Invalid if it isn't a settings file in a version the lint reads."""
         ...
 
 
@@ -89,7 +98,9 @@ class Hook:
         root = self._repositories.root(os.path.dirname(path))
         if root is None:
             return None, defaults()
-        chosen = settings(self._settings.read(root))
+        chosen = settings(
+            one_file(self._settings.read(root, FILE), self._settings.read(root, ROOT_FILE))
+        )
         if isinstance(chosen, Invalid):
             chosen = defaults()
         relative = os.path.relpath(path, root)

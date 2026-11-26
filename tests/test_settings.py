@@ -1,10 +1,13 @@
 from coupled.core.settings import (
+    FILE,
     REGISTRY_FILE,
+    ROOT_FILE,
     Invalid,
     MarkerMessage,
     Read,
     Settings,
     Version,
+    one_file,
     settings,
 )
 
@@ -19,6 +22,31 @@ NOT_A_REGISTRY = Invalid(
 
 def read(table: dict[str, object]) -> Read:
     return Read(Version.V1, table, WHERE)
+
+
+IN_BOTH = Invalid(f"There are settings in both {FILE} and {ROOT_FILE}: keep one of them.", ())
+
+
+def test_the_settings_file_is_the_one_in_config_when_only_it_is_there() -> None:
+    assert one_file(read({}), None) == read({})
+
+
+def test_the_settings_file_is_the_one_at_the_root_when_only_it_is_there() -> None:
+    assert one_file(None, read({})) == read({})
+
+
+def test_a_repository_with_neither_settings_file_has_none() -> None:
+    assert one_file(None, None) is None
+
+
+def test_settings_files_in_both_places_are_invalid() -> None:
+    assert one_file(read({}), read({})) == IN_BOTH
+
+
+def test_settings_files_in_both_places_are_invalid_even_when_one_cannot_be_read() -> None:
+    invalid = Invalid("No version in " + WHERE + ".", ("Add version = 1.",))
+    assert one_file(invalid, read({})) == IN_BOTH
+    assert one_file(read({}), invalid) == IN_BOTH
 
 
 def test_a_repository_with_no_settings_file_excludes_nothing() -> None:

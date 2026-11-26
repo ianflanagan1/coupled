@@ -1,5 +1,6 @@
 #:schema https://raw.githubusercontent.com/ianflanagan1/coupled/main/schema/coupled.v1.json
 version = 1
+registry-file = ".config/coupled-registry.toml"
 # The README's examples and the tests' fixtures are markers by design, some of them broken, and
 # examples/demo is a repository of its own, with its own registry.
 exclude = ["README.md", "examples", "tests"]

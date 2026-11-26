@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/ianflanagan1/coupled/main/schema/coupled.v1.json",
-  "title": ".config/coupled.toml, version 1",
+  "title": ".config/coupled.toml or coupled.toml, version 1",
   "description": "A repository's settings for its COUPLED markers, for coupled, which reads the copy on disk in the directory it scans. See coupled's README.",
   "type": "object",
   "additionalProperties": false,

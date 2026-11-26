@@ -25,7 +25,7 @@ from coupled.core.check import (
 from coupled.core.markers import Marker
 from coupled.core.registry import Registry, Unparseable
 from coupled.core.rewrite import wanted, with_messages
-from coupled.core.settings import Invalid, Read, Settings, settings
+from coupled.core.settings import FILE, ROOT_FILE, Invalid, Read, Settings, one_file, settings
 
 
 class MarkerSearch(Protocol):
@@ -43,9 +43,9 @@ class Files(Protocol):
 
 
 class SettingsFile(Protocol):
-    def read(self, root: str) -> Read | Invalid | None:
-        """The settings file of the repository at root, None if it has none, or Invalid if it
-        isn't a settings file in a version the lint reads."""
+    def read(self, root: str, name: str) -> Read | Invalid | None:
+        """The settings file at name from the repository's root, None if there's none, or
+        Invalid if it isn't a settings file in a version the lint reads."""
         ...
 
 
@@ -90,7 +90,9 @@ class Lint:
         """Lints the repository at root, leaving out the paths its settings exclude and the
         excludes given, after recording the groups of the keys in update as reviewed. Invalid,
         with nothing changed, when its settings can't be used."""
-        found = settings(self._settings.read(root))
+        found = settings(
+            one_file(self._settings.read(root, FILE), self._settings.read(root, ROOT_FILE))
+        )
         if isinstance(found, Invalid):
             return found
         excludes = found.excludes + excludes

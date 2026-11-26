@@ -132,6 +132,12 @@ def test_files_the_settings_exclude_are_left_alone(repo: Repo) -> None:
     assert "docs/example.md" not in str(_output(repo.read("s2", "app.py"))["additionalContext"])
 
 
+def test_files_the_settings_at_the_root_exclude_are_left_alone(repo: Repo) -> None:
+    repo.file("docs/example.md", "COUPLED:upload-limit: example")
+    repo.file("coupled.toml", "version = 1", 'exclude = ["docs"]')
+    assert repo.read("s1", "docs/example.md") is None
+
+
 def test_files_holding_the_ignore_directive_are_left_alone(repo: Repo) -> None:
     repo.file("SKILL.md", "<!-- COUPLED:IGNORE-FILE -->", "COUPLED:upload-limit: example")
     assert repo.read("s1", "SKILL.md") is None

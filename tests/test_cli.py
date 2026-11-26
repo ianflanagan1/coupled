@@ -186,6 +186,28 @@ def test_a_file_holding_the_ignore_directive_is_skipped(sandbox: Sandbox) -> Non
     assert_clean(sandbox.lint())
 
 
+def test_a_settings_file_at_the_root_is_read_when_there_is_none_in_config(
+    sandbox: Sandbox,
+) -> None:
+    upload(sandbox, 8)
+    sandbox.file("docs/b.py", "X = 2  # COUPLED:upload-limit: app")
+    sandbox.file("coupled.toml", "version = 1", 'exclude = ["docs/"]')
+    sandbox.review("upload-limit")
+    assert_clean(sandbox.lint())
+
+
+def test_settings_files_in_both_places_are_reported_and_nothing_is_changed(
+    sandbox: Sandbox,
+) -> None:
+    upload(sandbox, 8)
+    sandbox.file(SETTINGS, "version = 1")
+    sandbox.file("coupled.toml", "version = 1")
+    before = (sandbox.repo / "coupled-registry.toml").read_text()
+    ran = sandbox.review("upload-limit")
+    assert_problem(ran, "There are settings in both .config/coupled.toml and coupled.toml")
+    assert (sandbox.repo / "coupled-registry.toml").read_text() == before
+
+
 def test_an_excluded_path_adds_to_the_settings_file_s(sandbox: Sandbox) -> None:
     upload(sandbox, 8)
     sandbox.file("docs/b.py", "X = 2  # COUPLED:upload-limit: app")

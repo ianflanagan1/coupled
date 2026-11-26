@@ -129,13 +129,13 @@ In a git work tree it scans tracked files plus untracked files that aren't ignor
 
 ## Settings
 
-A repository sets the paths to exclude on every run, where its registry is, and whether markers carry a message, in `.config/coupled.toml`, committed with its code:
+A repository sets the paths to exclude on every run, where its registry is, and whether markers carry a message, in `.config/coupled.toml`, committed with its code. Keeping it in `.config/` leaves the root for the files people look for there; it can be `coupled.toml` at the root instead, but not both, and settings in both places stop the run:
 
 ```toml
 #:schema https://raw.githubusercontent.com/ianflanagan1/coupled/main/schema/coupled.v1.json
 version = 1
 exclude = ["docs", "tests/fixtures"]
-registry-file = ".config/coupled.toml"
+registry-file = ".config/coupled-registry.toml"
 markers-show-relations = true
 markers-point-to-registry = true
 ```
@@ -194,6 +194,7 @@ The lint can't do this on its own: anything that passes the build, an agent can 
    ```
    /coupled-registry.toml @<owner>
    /.config/coupled.toml  @<owner>
+   /coupled.toml          @<owner>
    /Taskfile.yml               @<owner>
    /devbox.json                @<owner>
    /.github/workflows/         @<owner>
